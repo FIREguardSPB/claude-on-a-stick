@@ -12,6 +12,31 @@ installed on the host, and nothing is left behind when you unplug.
 
 ---
 
+## One stick, every OS
+
+**One USB launches Claude Code on Windows, Linux *and* macOS - from a single encrypted
+token.** Pick one target or several at build time (comma-separated, or `A` for "all
+common" = `win32-x64` + `linux-x64` + `darwin-arm64`). The builder downloads and
+sha256-verifies each platform's binary into its own subdir, and the launchers figure out
+which one to run on whatever machine you plug into:
+
+```
+<STICK>/
+  bin/win32-x64/claude.exe     # one subdir per built platform
+  bin/linux-x64/claude
+  bin/darwin-arm64/claude
+  config/  oauth.enc  settings.json  .claude.json   # ONE encrypted token, shared by every OS
+  projects/   tmp/   (launchers ...)
+```
+
+The auth token and `config/` are written **once** and shared - the same `oauth.enc`
+decrypts on Windows (PowerShell) and on Linux/macOS (openssl). At launch, the `env`
+script resolves `CLAUDE_BIN` to the binary matching the running OS and architecture
+(`x64`/`arm64`, plus glibc-vs-musl on Linux). Single-target builds still work exactly as
+before - the default target is just the machine you build on.
+
+---
+
 ## What it actually is
 
 - **The real Claude Code**, not a wrapper or a reimplementation. The builder
@@ -113,23 +138,37 @@ powershell -ExecutionPolicy Bypass -File .\builders\windows\build.ps1
 The builder will, in order:
 
 1. **Pick a language** (RU/EN, defaulting to your system locale).
-2. **Select the USB stick** from removable disks only, confirm by size+model,
-   and format it as a single MBR + exFAT volume labelled `CLAUDE`.
-3. **Download the official `claude` binary** for your chosen target platform
-   and channel (default: **stable**; **latest** optional), verifying its
-   SHA-256 checksum (and the GPG-signed manifest when `gpg` is available).
-4. **Take your auth token.** Run `claude setup-token` if you have not already,
-   paste the token, choose a **stick password**, and the builder AES-encrypts
-   it to `config/oauth.enc`.
-5. **Choose the default model** (baked into the launcher as `--model`; default
+2. **Choose your target platform(s).** Default is the machine you are building on
+   (single target). For a multi-OS stick, enter a **comma-separated** list (e.g.
+   `win32-x64,linux-x64,darwin-arm64`) or `A` for "all common". Available:
+   `win32-x64`, `win32-arm64`, `linux-x64`, `linux-arm64`, `linux-x64-musl`,
+   `linux-arm64-musl`, `darwin-x64`, `darwin-arm64`.
+3. **Select the USB stick** from removable disks only, confirm by size+model,
+   and format it **once** as a single MBR + exFAT volume labelled `CLAUDE`
+   (the destructive format runs a single time, no matter how many targets you chose).
+4. **Download the official `claude` binary** for *each* chosen target platform
+   and channel (default: **stable**; **latest** optional), verifying each one's
+   SHA-256 checksum (and the GPG-signed manifest when `gpg` is available). Each
+   platform lands in its own `bin/<platform>/` subdir.
+5. **Take your auth token** (once, shared by every target). Run `claude setup-token`
+   if you have not already, paste the token, choose a **stick password**, and the
+   builder AES-encrypts it to `config/oauth.enc`. The same encrypted token is read by
+   every OS the stick targets.
+6. **Choose the default model** (baked into the launcher as `--model`; default
    `claude-opus-4-8`).
-6. **Optionally add the Happ VPN:** download + portable-ize Happ for the target
-   OS and import *your* subscription link (raw sub URL → `happ://add/…`, or a
-   ready `happ://crypt5/…` verbatim).
-7. **Copy the launcher payload** (templated for the chosen OS, language, and
-   model) onto the stick.
+7. **Optionally add the Happ VPN.** For a single-OS stick: download + portable-ize Happ
+   for that OS and import *your* subscription link (raw sub URL → `happ://add/…`, or a
+   ready `happ://crypt5/…` verbatim). For a multi-OS stick the VPN is **off by default**
+   (Happ binaries are OS-specific and large); if you opt in, one copy per OS is bundled
+   into `apps/happ-<os>/`. Without it, the geo-guard falls back to your host/system VPN.
+8. **Copy the launcher payload** (templated for the chosen OS(es), language, and model)
+   onto the stick. For a multi-OS stick the launcher set is the **union**: the Windows
+   launchers if any `win32-*` target was chosen, the POSIX launchers if any Linux/macOS
+   target was chosen.
 
-Result: a self-contained `CLAUDE` stick you can hand to any supported machine.
+Result: a self-contained `CLAUDE` stick you can hand to any supported machine. If you
+targeted several OSes, the same stick runs on all of them - it auto-selects the right
+binary (`CLAUDE_BIN`) for whatever machine you plug into.
 
 ---
 

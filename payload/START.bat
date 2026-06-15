@@ -69,8 +69,11 @@ echo.
 echo Launching Claude Code (model: __MODEL__) ...
 echo.
 
-REM  bin\claude.exe is the self-contained binary placed by the builder.
-"%STICK%\bin\claude.exe" --model __MODEL__ %*
+REM  CLAUDE_BIN was resolved by env.bat to the right per-OS/arch binary
+REM  (bin\win32-<arch>\claude.exe, with fallbacks). env.bat already exited 1 if
+REM  no binary was present, so by here it is guaranteed set.
+if not defined CLAUDE_BIN goto env_failed
+"%CLAUDE_BIN%" --model __MODEL__ %*
 set "RC=%ERRORLEVEL%"
 
 goto cleanup

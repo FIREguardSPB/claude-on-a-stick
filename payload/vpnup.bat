@@ -31,15 +31,23 @@ REM -- Resolve STICK from this script's own location ---------------------------
 set "STICK=%~dp0"
 if "%STICK:~-1%"=="\" set "STICK=%STICK:~0,-1%"
 
+REM -- Resolve the bundled Happ dir (multi-OS layout). A multi-OS stick puts the
+REM    Windows Happ under apps\happ-win32; a single-target build keeps the legacy
+REM    flat apps\happ. Prefer the per-OS dir, then fall back to flat, matching
+REM    what build.ps1 writes so the bundled VPN is actually found.
+set "HAPP_DIR="
+if exist "%STICK%\apps\happ-win32" set "HAPP_DIR=%STICK%\apps\happ-win32"
+if not defined HAPP_DIR if exist "%STICK%\apps\happ" set "HAPP_DIR=%STICK%\apps\happ"
+
 REM -- No bundled VPN? Nothing to do; geoguard will still check the region. ----
-if not exist "%STICK%\apps\happ" goto skip_vpn
+if not defined HAPP_DIR goto skip_vpn
 
 echo.
 echo [vpn] Bringing up bundled Happ (proxy mode) ...
 
 REM -- Start Happ with config redirected onto the stick ------------------------
 REM    run-happ.bat returns 1 if Happ.exe is missing; treat that as "no VPN".
-call "%STICK%\apps\happ\run-happ.bat"
+call "%HAPP_DIR%\run-happ.bat"
 if errorlevel 1 goto skip_vpn
 
 REM ---------------------------------------------------------------------------
@@ -76,9 +84,13 @@ REM  No bundled Happ (or no exe). Make sure no stale proxy vars are left set.
 set "HTTPS_PROXY="
 set "HTTP_PROXY="
 set "HAPP_PROXY_PORT="
+set "HAPP_DIR="
 goto ok
 
 REM ---------------------------------------------------------------------------
 :ok
+REM  Drop the internal HAPP_DIR scratch var so it doesn't leak to the caller
+REM  (we run without setlocal, so the proxy vars survive but scratch must not).
+set "HAPP_DIR="
 REM  Never abort the chain from here; geoguard is the gate. No (set)local used.
 exit /b 0

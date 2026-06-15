@@ -33,8 +33,24 @@ echo Model      : __MODEL__
 echo Language   : __LANG__
 echo.
 
+REM -- Resolve CLAUDE_BIN exactly as env.bat does (per-OS/arch, with fallbacks)
+REM    so this report shows the same binary START.bat would actually exec.
+set "CLAUDE_BIN="
+set "WINARCH=x64"
+if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "WINARCH=arm64"
+if /I "%PROCESSOR_ARCHITEW6432%"=="ARM64" set "WINARCH=arm64"
+if exist "%STICK%\bin\win32-%WINARCH%\claude.exe" set "CLAUDE_BIN=%STICK%\bin\win32-%WINARCH%\claude.exe"
+if not defined CLAUDE_BIN if exist "%STICK%\bin\win32-x64\claude.exe" set "CLAUDE_BIN=%STICK%\bin\win32-x64\claude.exe"
+if not defined CLAUDE_BIN if exist "%STICK%\bin\win32-arm64\claude.exe" set "CLAUDE_BIN=%STICK%\bin\win32-arm64\claude.exe"
+if not defined CLAUDE_BIN if exist "%STICK%\bin\claude.exe" set "CLAUDE_BIN=%STICK%\bin\claude.exe"
+
 echo --- Files ----------------------------------
-call :checkfile "bin\claude.exe"
+if defined CLAUDE_BIN goto df_binok
+echo   [MISSING] no claude.exe under bin\win32-x64, bin\win32-arm64, or bin\
+goto df_bindone
+:df_binok
+call :reportbin
+:df_bindone
 call :checkfile "config\settings.json"
 call :checkfile "config\.claude.json"
 call :checkdir  "config"
@@ -62,12 +78,13 @@ echo   [WARN] config\oauth.txt present (PLAINTEXT token, no encryption).
 echo.
 
 echo --- Claude binary --------------------------
-if not exist "%STICK%\bin\claude.exe" goto claude_missing
-echo   Path: %STICK%\bin\claude.exe
-"%STICK%\bin\claude.exe" --version 2>nul
+echo   Host arch  : %WINARCH%  (looked for bin\win32-%WINARCH%\claude.exe first)
+if not defined CLAUDE_BIN goto claude_missing
+echo   Resolved   : %CLAUDE_BIN%
+"%CLAUDE_BIN%" --version 2>nul
 goto claude_done
 :claude_missing
-echo   [MISSING] bin\claude.exe not found -- re-run the builder.
+echo   [MISSING] no claude.exe under bin\win32-x64, bin\win32-arm64, or bin\ -- re-run the builder.
 :claude_done
 echo.
 
@@ -81,12 +98,17 @@ echo   [MISSING] geoguard.conf not found (guard will use built-in defaults).
 echo.
 
 echo --- Bundled VPN (Happ) ---------------------
-if exist "%STICK%\apps\happ" goto happ_present
+REM  Resolve the Happ dir as vpnup.bat does: prefer apps\happ-win32 (multi-OS
+REM  layout) then fall back to flat apps\happ (single-target build).
+set "HAPP_DIR="
+if exist "%STICK%\apps\happ-win32" set "HAPP_DIR=%STICK%\apps\happ-win32"
+if not defined HAPP_DIR if exist "%STICK%\apps\happ" set "HAPP_DIR=%STICK%\apps\happ"
+if defined HAPP_DIR goto happ_present
 echo   [none] no apps\happ -- relying on host/system VPN; geoguard still runs.
 goto happ_done
 :happ_present
-echo   [OK] apps\happ present.
-if exist "%STICK%\apps\happ\run-happ.bat" echo        run-happ.bat present.
+echo   [OK] %HAPP_DIR% present.
+if exist "%HAPP_DIR%\run-happ.bat" echo        run-happ.bat present.
 :happ_done
 echo.
 
@@ -116,6 +138,12 @@ exit /b 0
 REM ===========================================================================
 REM  Subroutines (called with `call :label "relpath"`).
 REM ===========================================================================
+:reportbin
+REM  Report the resolved binary relative to STICK (strip the STICK prefix).
+set "RELBIN=%CLAUDE_BIN:*bin\=bin\%"
+echo   [OK]      %RELBIN%
+goto :eof
+
 :checkfile
 if exist "%STICK%\%~1" goto cf_ok
 echo   [MISSING] %~1

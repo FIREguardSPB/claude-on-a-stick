@@ -51,7 +51,16 @@ param(
     # Default model baked into the stick launcher's `--model`. (CONTRACTS.md locked default.)
     [string]$Model = 'claude-opus-4-8',
     # Non-interactive: assume "no VPN" (skips the Happ prompt entirely).
-    [switch]$NoHapp
+    [switch]$NoHapp,
+    # MULTI-OS STICK ("one stick, any OS"): which platform binaries to bake onto the
+    # stick. Comma-separated list of release platform ids, or 'A' = all common
+    # (win32-x64,linux-x64,darwin-arm64). Default (unset) = THIS host's win32 target.
+    # Valid ids: win32-x64 win32-arm64 linux-x64 linux-arm64 linux-x64-musl
+    #            linux-arm64-musl darwin-x64 darwin-arm64.  (CONTRACTS.md sec 8 + MULTI-OS delta)
+    [string]$Target,
+    # Non-interactive escape hatch for unattended runs / CI: never prompt for the
+    # target list, just use -Target (or the host default). Mirrors the other -No* flags.
+    [switch]$NoTargetPrompt
 )
 
 $ErrorActionPreference = 'Stop'
@@ -121,6 +130,19 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
         en = @{
             welcome              = 'Claude on a Stick - build a portable, no-install Claude Code USB.'
             welcome_sub          = 'Repo ships logic only; binaries + your token are fetched/entered now and land on the stick.'
+            # ---- MULTI-OS STICK target selection (one stick, any OS) ----
+            step_target          = 'Choosing target platform(s)'
+            target_one_stick     = 'MULTI-OS: one stick can launch Claude on Windows, Linux AND macOS from the same encrypted token.'
+            target_host_default  = 'Default = this host only: {0}'
+            target_menu          = 'Enter a comma-separated list of platforms, A = all common (win32-x64,linux-x64,darwin-arm64), or blank for the default.'
+            target_choices       = '  win32-x64  win32-arm64  linux-x64  linux-arm64  linux-x64-musl  linux-arm64-musl  darwin-x64  darwin-arm64'
+            target_prompt        = 'Targets [{0}]'
+            target_bad           = 'Unknown platform id (ignored): {0}'
+            target_none          = 'No valid target platform selected - aborting.'
+            target_selected      = 'Building for: {0}'
+            step_download_multi  = 'Downloading + verifying {0} platform binary/binaries'
+            dl_for_plat          = '-- {0} --'
+            dl_into              = 'Placed bin\{0}\{1}'
             step_elev            = 'Checking privileges'
             elev_ok              = 'Running as Administrator.'
             elev_need            = 'Administrator is required to format a USB disk.'
@@ -191,6 +213,8 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
             selftest_decrypt_skip= 'Decrypt self-test skipped (decrypt.ps1 or oauth.enc missing).'
             done                 = 'BUILD COMPLETE. Portable Claude Code is on {0}'
             done_run             = 'On the target PC: open {0} and double-click START.bat.'
+            done_run_posix       = 'On Linux/macOS: open a terminal in {0} and run ./start.sh.'
+            done_targets         = 'Platforms baked onto the stick: {0}'
             done_safety          = 'Token-only encryption protects the auth token; for client PII use whole-volume encryption (BitLocker To Go / VeraCrypt).'
             # ---- keys emitted by shared/usb.ps1 (localized here; the module ships English-only) ----
             usb_scanning         = 'Scanning for removable USB disks...'
@@ -213,6 +237,26 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
             usb_done             = 'Done. The stick is formatted and ready.'
             usb_fail             = 'Format FAILED.'
             usb_internal_skipped = '(internal/system disks are never shown)'
+            # ---- dotted keys emitted by shared/usb.ps1 (it uses usb.* / fmt.*,
+            #      and passes -f args, so these must exist AND T() must format) ----
+            'usb.scanning'       = 'Scanning for removable USB disks...'
+            'usb.none_found'     = 'No removable USB disk found. Plug one in and re-run.'
+            'usb.list_header'    = 'Detected removable disks (internal disks are NEVER offered):'
+            'usb.row'            = '  {0})  {1}   size={2}   model={3}'
+            'usb.choose'         = "Type the number of the target disk (or 'q' to quit): "
+            'usb.bad_choice'     = 'Not a valid choice. Try again.'
+            'usb.is_hdd_warn'    = "Note: a USB HDD also shows as a USB disk. Make ABSOLUTELY sure '{0}' is the stick you want to erase."
+            'usb.warn_title'     = '!!! DESTRUCTIVE ACTION - READ CAREFULLY !!!'
+            'usb.warn_body'      = 'ALL data on {0} ({1}, {2}) will be PERMANENTLY ERASED. This cannot be undone.'
+            'usb.erase_prompt'   = 'To confirm, type ERASE {0} exactly (anything else cancels): '
+            'usb.erase_mismatch' = 'Confirmation did not match. Nothing was erased.'
+            'fmt.start'          = 'Formatting {0} ... (MBR, single exFAT partition type 0x07, label CLAUDE)'
+            'fmt.clear'          = '  - Clearing the disk (Clear-Disk)...'
+            'fmt.parttable'      = '  - Initializing MBR partition table...'
+            'fmt.partition'      = '  - Creating one partition...'
+            'fmt.mkfs'           = '  - Formatting exFAT (label CLAUDE)...'
+            'fmt.done'           = 'Format complete. Stick is drive {0}.'
+            'fmt.need_admin'     = 'Formatting needs Administrator. Re-run this builder elevated (Run as administrator).'
             # ---- keys emitted by shared/happ.ps1 ----
             happ_api_fail        = 'Could not reach the Happ release API.'
             happ_downloading     = 'Downloading'
@@ -230,6 +274,19 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
         ru = @{
             welcome              = 'Claude on a Stick - сборка портативной USB-флешки с Claude Code без установки.'
             welcome_sub          = 'В репозитории только логика; бинарники и ваш токен скачиваются/вводятся сейчас и ложатся на флешку.'
+            # ---- MULTI-OS: выбор целевых платформ (одна флешка - любая ОС) ----
+            step_target          = 'Выбор целевой платформы (платформ)'
+            target_one_stick     = 'MULTI-OS: одна флешка запускает Claude на Windows, Linux И macOS из одного зашифрованного токена.'
+            target_host_default  = 'По умолчанию = только этот хост: {0}'
+            target_menu          = 'Введите список платформ через запятую, A = все основные (win32-x64,linux-x64,darwin-arm64) или пусто для значения по умолчанию.'
+            target_choices       = '  win32-x64  win32-arm64  linux-x64  linux-arm64  linux-x64-musl  linux-arm64-musl  darwin-x64  darwin-arm64'
+            target_prompt        = 'Платформы [{0}]'
+            target_bad           = 'Неизвестный идентификатор платформы (пропущен): {0}'
+            target_none          = 'Не выбрано ни одной корректной платформы - прерывание.'
+            target_selected      = 'Сборка для: {0}'
+            step_download_multi  = 'Загрузка и проверка бинарников: {0} шт.'
+            dl_for_plat          = '-- {0} --'
+            dl_into              = 'Размещено bin\{0}\{1}'
             step_elev            = 'Проверка прав'
             elev_ok              = 'Запущено от имени администратора.'
             elev_need            = 'Для форматирования USB-диска нужны права администратора.'
@@ -300,6 +357,8 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
             selftest_decrypt_skip= 'Самопроверка расшифровки пропущена (нет decrypt.ps1 или oauth.enc).'
             done                 = 'СБОРКА ЗАВЕРШЕНА. Портативный Claude Code на {0}'
             done_run             = 'На целевом ПК: откройте {0} и дважды щёлкните START.bat.'
+            done_run_posix       = 'На Linux/macOS: откройте терминал в {0} и запустите ./start.sh.'
+            done_targets         = 'Платформы, записанные на флешку: {0}'
             done_safety          = 'Шифрование «только токен» защищает токен; для клиентских ПДн используйте шифрование всего тома (BitLocker To Go / VeraCrypt).'
             # ---- ключи, которые печатает shared/usb.ps1 (локализованы здесь; в модуле только английский) ----
             usb_scanning         = 'Поиск съёмных USB-дисков...'
@@ -322,6 +381,25 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
             usb_done             = 'Готово. Флешка отформатирована и готова.'
             usb_fail             = 'ОШИБКА форматирования.'
             usb_internal_skipped = '(внутренние/системные диски никогда не показываются)'
+            # ---- точечные ключи из shared/usb.ps1 (usb.* / fmt.* + аргументы -f) ----
+            'usb.scanning'       = 'Поиск съёмных USB-дисков...'
+            'usb.none_found'     = 'Съёмные USB-диски не найдены. Вставьте флешку и повторите.'
+            'usb.list_header'    = 'Обнаружены съёмные диски (внутренние диски НИКОГДА не предлагаются):'
+            'usb.row'            = '  {0})  {1}   размер={2}   модель={3}'
+            'usb.choose'         = 'Введите номер целевого диска (или «q» для выхода): '
+            'usb.bad_choice'     = 'Неверный выбор. Повторите.'
+            'usb.is_hdd_warn'    = 'Внимание: USB-HDD тоже отображается как USB-диск. УБЕДИТЕСЬ, что «{0}» - именно та флешка, которую нужно стереть.'
+            'usb.warn_title'     = '!!! РАЗРУШИТЕЛЬНОЕ ДЕЙСТВИЕ - ЧИТАЙТЕ ВНИМАТЕЛЬНО !!!'
+            'usb.warn_body'      = 'ВСЕ данные на {0} ({1}, {2}) будут БЕЗВОЗВРАТНО СТЁРТЫ. Отменить нельзя.'
+            'usb.erase_prompt'   = 'Для подтверждения введите ERASE {0} в точности (иначе - отмена): '
+            'usb.erase_mismatch' = 'Подтверждение не совпало. Ничего не стёрто.'
+            'fmt.start'          = 'Форматирование {0} ... (MBR, один раздел exFAT типа 0x07, метка CLAUDE)'
+            'fmt.clear'          = '  - Очистка диска (Clear-Disk)...'
+            'fmt.parttable'      = '  - Инициализация таблицы разделов MBR...'
+            'fmt.partition'      = '  - Создание одного раздела...'
+            'fmt.mkfs'           = '  - Форматирование exFAT (метка CLAUDE)...'
+            'fmt.done'           = 'Форматирование завершено. Флешка - диск {0}.'
+            'fmt.need_admin'     = 'Для форматирования нужны права администратора. Перезапустите сборщик с повышением.'
             # ---- ключи, которые печатает shared/happ.ps1 ----
             happ_api_fail        = 'Не удалось обратиться к API релизов Happ.'
             happ_downloading     = 'Скачивание'
@@ -343,12 +421,29 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
         $script:Lang = $Code
     }
     function T {
-        param([Parameter(Mandatory)][string]$Key)
+        # Accept the SAME contract as shared/i18n.ps1 + shared/usb.ps1's own T():
+        # a key PLUS optional remaining args that fill {0} {1} ... via .NET -f.
+        # The dot-sourced modules (usb.ps1 emits usb.* / fmt.* keys) call
+        # `T 'usb.row' ($i+1) $id $size $model`; a single-$Key signature here made
+        # those calls throw "A positional parameter cannot be found that accepts
+        # argument '1'." and crashed the builder in the USB step (the prior crash
+        # class). ValueFromRemainingArguments captures them so the call succeeds.
+        param(
+            [Parameter(Mandatory, Position = 0)][string]$Key,
+            [Parameter(ValueFromRemainingArguments = $true)][object[]]$Rest
+        )
         $tbl = $script:CasMsg[$script:Lang]
-        if ($tbl -and $tbl.ContainsKey($Key)) { return $tbl[$Key] }
-        $en = $script:CasMsg['en']
-        if ($en -and $en.ContainsKey($Key)) { return $en[$Key] }
-        return $Key
+        $tmpl = $null
+        if ($tbl -and $tbl.ContainsKey($Key)) { $tmpl = $tbl[$Key] }
+        else {
+            $en = $script:CasMsg['en']
+            if ($en -and $en.ContainsKey($Key)) { $tmpl = $en[$Key] }
+        }
+        if ($null -eq $tmpl) { $tmpl = $Key }
+        if ($null -ne $Rest -and $Rest.Count -gt 0) {
+            try { return ($tmpl -f $Rest) } catch { return $tmpl }
+        }
+        return $tmpl
     }
 }
 
@@ -404,6 +499,87 @@ if (-not $cryptoLoaded -or -not (Get-Command Protect-CasToken -ErrorAction Silen
     Die "shared/crypto.ps1 is missing or lacks Protect-CasToken. The repo is incomplete."
 }
 # happ.ps1 is only required if the user opts into the VPN; checked at that step.
+
+# ==============================================================================
+#  0b) TARGET PLATFORM(S)  -  MULTI-OS STICK ("one stick, any OS").
+#      Mirror of build.sh's multi-target step: choose ONE or MANY release
+#      platforms in a single run. The destructive format + the encrypted token +
+#      the shared config are still done exactly ONCE (later steps); only the
+#      binary download + the launcher *union* fan out per selected platform.
+#      Default (single-target) stays this host's win32 build, so existing
+#      single-target runs are unchanged.  (CONTRACTS.md sec 8 + MULTI-OS delta)
+# ==============================================================================
+
+# Canonical list of release platform ids (CONTRACTS.md sec 8).
+$AllPlatforms = @(
+    'win32-x64', 'win32-arm64',
+    'linux-x64', 'linux-arm64', 'linux-x64-musl', 'linux-arm64-musl',
+    'darwin-x64', 'darwin-arm64'
+)
+# "A = all common" expands to one binary per OS family.
+$CommonPlatforms = @('win32-x64', 'linux-x64', 'darwin-arm64')
+
+# Detect THIS host's win32 platform id (the single-target default).
+$hostArch = $env:PROCESSOR_ARCHITECTURE
+$HostPlatform = if ($hostArch -match 'ARM64') { 'win32-arm64' } else { 'win32-x64' }
+
+# Parse a raw target spec ("A", or a comma/space/semicolon list) into a validated,
+# de-duplicated, order-preserving array. Unknown ids are warned + dropped.
+function Resolve-Targets {
+    param([string]$Spec)
+    if ([string]::IsNullOrWhiteSpace($Spec)) { return @() }
+    if ($Spec.Trim().ToUpper() -eq 'A') { return $CommonPlatforms }
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($raw in ($Spec -split '[,;\s]+')) {
+        $p = $raw.Trim().ToLower()
+        if ([string]::IsNullOrWhiteSpace($p)) { continue }
+        if ($p -eq 'a') { foreach ($c in $CommonPlatforms) { if (-not $out.Contains($c)) { $out.Add($c) } }; continue }
+        if ($AllPlatforms -contains $p) {
+            if (-not $out.Contains($p)) { $out.Add($p) }
+        }
+        else {
+            Write-Warn2 ((T 'target_bad') -f $p)
+        }
+    }
+    return $out.ToArray()
+}
+
+Write-Step (T 'step_target')
+Write-Host (T 'target_one_stick') -ForegroundColor DarkGray
+Write-Host ((T 'target_host_default') -f $HostPlatform) -ForegroundColor DarkGray
+
+# Build the working target set: explicit -Target wins; else prompt (unless
+# -NoTargetPrompt); blank => host default (single-target, unchanged behaviour).
+[string[]]$Targets = @()
+if ($PSBoundParameters.ContainsKey('Target') -and -not [string]::IsNullOrWhiteSpace($Target)) {
+    $Targets = Resolve-Targets $Target
+}
+elseif ($NoTargetPrompt) {
+    $Targets = @($HostPlatform)
+}
+else {
+    Write-Host (T 'target_menu') -ForegroundColor DarkGray
+    Write-Host (T 'target_choices') -ForegroundColor DarkGray
+    $sel = Read-Host ((T 'target_prompt') -f $HostPlatform)
+    if ([string]::IsNullOrWhiteSpace($sel)) {
+        $Targets = @($HostPlatform)
+    }
+    else {
+        $Targets = Resolve-Targets $sel
+    }
+}
+
+if (-not $Targets -or $Targets.Count -eq 0) {
+    Die (T 'target_none')
+}
+$IsMultiTarget = ($Targets.Count -gt 1)
+Write-Ok ((T 'target_selected') -f ($Targets -join ', '))
+
+# Launcher-family flags drive the UNION copy later (MULTI-OS delta point 4):
+#   any win32-*       -> copy the Windows launcher set
+#   any linux/darwin  -> copy the POSIX launcher set
+$NeedWinLaunchers = [bool]($Targets | Where-Object { $_ -like 'win32-*' })
+$NeedPosixLaunchers = [bool]($Targets | Where-Object { $_ -like 'linux-*' -or $_ -like 'darwin-*' })
 
 # ==============================================================================
 #  1)  ELEVATION  -  formatting a physical disk needs admin on Windows.
@@ -474,37 +650,33 @@ foreach ($sub in @('bin', 'config', 'projects', 'tmp', 'apps')) {
 }
 
 # ==============================================================================
-#  3)  DOWNLOAD claude.exe + sha256-verify   (CONTRACTS.md sec. 8, VERIFIED)
+#  3)  DOWNLOAD claude binary/binaries + sha256-verify   (CONTRACTS.md sec. 8)
+#      MULTI-OS: the SAME uniform layout is used for single AND multi builds:
+#          bin/<platform>/claude       (posix)
+#          bin/<platform>/claude.exe   (windows)
+#      Each selected platform is resolved from the manifest, downloaded into its
+#      own subdir and sha256-verified independently (abort on any mismatch). The
+#      version + manifest + GPG check are fetched ONCE and reused for every plat.
 # ==============================================================================
-Write-Step (T 'step_download')
-
-# Pick the win32 platform key by the OS architecture.
-$arch = $env:PROCESSOR_ARCHITECTURE
-$plat = if ($arch -match 'ARM64') { 'win32-arm64' } else { 'win32-x64' }
-Write-Host ((T 'dl_plat') -f $plat, $Channel) -ForegroundColor DarkGray
+Write-Step ((T 'step_download_multi') -f $Targets.Count)
+Write-Host ((T 'dl_plat') -f ($Targets -join ', '), $Channel) -ForegroundColor DarkGray
 
 function Get-Text { param([string]$Url) return (Invoke-RestMethod -Uri $Url -TimeoutSec 30) }
 
-# 3a. resolve bare semver from /<channel>
+# 3a. resolve bare semver from /<channel>  (ONCE).
 $ver = "$([string](Get-Text "$ManifestHost/$Channel"))".Trim()
 if ($ver -notmatch '^\d+\.\d+\.\d+') { Die ((T 'dl_badver') -f $ver) }
 Write-Host ((T 'dl_version') -f $ver) -ForegroundColor DarkGray
 
-# 3b. /<ver>/manifest.json -> platform entry
+# 3b. /<ver>/manifest.json  (ONCE).
 $manifest = Get-Text "$ManifestHost/$ver/manifest.json"
 # StrictMode-safe presence test: accessing an absent property (e.g. the platform
 # key missing from the manifest) throws under Set-StrictMode -Version Latest, so
 # probe the property names rather than reading the value to test for it.
 $platforms = if ($manifest.PSObject.Properties.Name -contains 'platforms') { $manifest.platforms } else { $null }
-if (-not $platforms -or -not ($platforms.PSObject.Properties.Name -contains $plat)) {
-    Die ((T 'dl_noplat') -f $plat, $ver)
-}
-$entry = $platforms.$plat
-$binName = $entry.binary           # "claude.exe"
-$wantSum = ($entry.checksum).ToLower()
-$wantSize = $entry.size
+if (-not $platforms) { Die ((T 'dl_noplat') -f ($Targets -join ', '), $ver) }
 
-# 3c. (best-effort) GPG manifest signature verify, only if gpg is present.
+# 3c. (best-effort) GPG manifest signature verify, only if gpg is present (ONCE).
 $gpg = Get-Command gpg -ErrorAction SilentlyContinue
 if ($gpg) {
     try {
@@ -522,22 +694,46 @@ else {
     Write-Host (T 'dl_gpg_absent') -ForegroundColor DarkGray
 }
 
-# 3d. download the binary onto the stick and sha256-verify against the manifest.
-$binUrl = "$ManifestHost/$ver/$plat/$binName"
-$binDst = Join-Path (Join-Path $StickRoot 'bin') 'claude.exe'
-Write-Host ((T 'dl_fetching') -f $binUrl) -ForegroundColor DarkGray
-Invoke-WebRequest -Uri $binUrl -OutFile $binDst -UseBasicParsing -TimeoutSec 600
+# 3d. per-platform download + verify into bin/<plat>/claude(.exe).
+$binRoot = Join-Path $StickRoot 'bin'
+# Remember the host-runnable win32 binary path (for the setup-token step + self-test).
+$hostBinDst = $null
+foreach ($plat in $Targets) {
+    Write-Host ((T 'dl_for_plat') -f $plat) -ForegroundColor White
+    if (-not ($platforms.PSObject.Properties.Name -contains $plat)) {
+        Die ((T 'dl_noplat') -f $plat, $ver)
+    }
+    $entry = $platforms.$plat
+    $binName = $entry.binary          # "claude.exe" (win) / "claude" (else)
+    $wantSum = ($entry.checksum).ToLower()
+    $wantSize = if ($entry.PSObject.Properties.Name -contains 'size') { $entry.size } else { $null }
 
-$gotSize = (Get-Item -LiteralPath $binDst).Length
-if ($wantSize -and ($gotSize -ne $wantSize)) {
-    Write-Warn2 ((T 'dl_size_mismatch') -f $gotSize, $wantSize)
+    # Uniform per-platform subdir. The on-stick file name follows the OS family.
+    $platDir = Join-Path $binRoot $plat
+    New-Item -ItemType Directory -Force -Path $platDir | Out-Null
+    $localName = if ($plat -like 'win32-*') { 'claude.exe' } else { 'claude' }
+    $binDst = Join-Path $platDir $localName
+
+    $binUrl = "$ManifestHost/$ver/$plat/$binName"
+    Write-Host ((T 'dl_fetching') -f $binUrl) -ForegroundColor DarkGray
+    Invoke-WebRequest -Uri $binUrl -OutFile $binDst -UseBasicParsing -TimeoutSec 600
+
+    $gotSize = (Get-Item -LiteralPath $binDst).Length
+    if ($wantSize -and ($gotSize -ne $wantSize)) {
+        Write-Warn2 ((T 'dl_size_mismatch') -f $gotSize, $wantSize)
+    }
+    $gotSum = (Get-FileHash -LiteralPath $binDst -Algorithm SHA256).Hash.ToLower()
+    if ($gotSum -ne $wantSum) {
+        Remove-Item -Force -ErrorAction SilentlyContinue $binDst
+        Die ((T 'dl_sum_mismatch') -f $gotSum, $wantSum)
+    }
+    Write-Ok ((T 'dl_verified') -f $ver, $gotSum.Substring(0, 16))
+    Write-Ok ((T 'dl_into') -f $plat, $localName)
+
+    # The host can run a win32 binary matching its own arch -> use it for the
+    # interactive setup-token + the --version self-test below.
+    if ($plat -eq $HostPlatform) { $hostBinDst = $binDst }
 }
-$gotSum = (Get-FileHash -LiteralPath $binDst -Algorithm SHA256).Hash.ToLower()
-if ($gotSum -ne $wantSum) {
-    Remove-Item -Force -ErrorAction SilentlyContinue $binDst
-    Die ((T 'dl_sum_mismatch') -f $gotSum, $wantSum)
-}
-Write-Ok ((T 'dl_verified') -f $ver, $gotSum.Substring(0, 16))
 
 # ==============================================================================
 #  4)  AUTH TOKEN  ->  `claude setup-token`  ->  AES encrypt to config/oauth.enc
@@ -570,13 +766,16 @@ function Read-TokenPaste {
     finally { [Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr) }
 }
 
-# host_runnable: this is a Windows host producing a win32 target, so the binary
-# runs here as long as it was actually downloaded.
+# host_runnable: this is a Windows host, so it can run a win32 binary whose arch
+# matches the host. In a MULTI-OS build that win32 binary is only present if the
+# host's platform was among the selected targets (-> $hostBinDst was set in the
+# download loop). When cross-building (e.g. only linux/darwin targets) there is
+# no runnable binary here, so we fall back to manual paste.
 # StrictMode-safe: $IsWindows is an automatic var on PS 6+ but is UNSET on Windows
 # PowerShell 5.1 (the primary target), where reading it throws under StrictMode -
 # so probe via Get-Variable; absence means PS 5.1 == Windows == runnable.
 $isWin = if (Get-Variable -Name IsWindows -Scope Global -ErrorAction SilentlyContinue) { $IsWindows } else { $true }
-$hostRunnable = $isWin -and (Test-Path -LiteralPath $binDst)
+$hostRunnable = $isWin -and $hostBinDst -and (Test-Path -LiteralPath $hostBinDst)
 
 # Print the menu and read the (non-sensitive) choice. Default to [2] when we can
 # run setup-token here; force [1] when cross-building.
@@ -605,7 +804,8 @@ if ($choice -eq '2') {
         Write-Host (T 'token_running') -ForegroundColor DarkGray
         # setup-token is interactive (browser OAuth) and prints the long-lived
         # token to stdout on success. Capture stdout; pull the token-ish line.
-        $tokenOut = & $binDst 'setup-token' 2>&1 | Out-String
+        # Uses the host-matching win32 binary downloaded above ($hostBinDst).
+        $tokenOut = & $hostBinDst 'setup-token' 2>&1 | Out-String
         if ($LASTEXITCODE -ne 0) { throw ((T 'token_cmd_failed') -f $LASTEXITCODE) }
         foreach ($line in ($tokenOut -split "`r?`n")) {
             $l = $line.Trim()
@@ -685,12 +885,23 @@ if (-not (Test-Path -LiteralPath $dotClaude)) {
 # ==============================================================================
 Write-Step (T 'step_happ')
 
+# MULTI-OS delta point 7: Happ binaries are OS-specific (~300MB each), so in a
+# multi-target build VPN bundling is OPTIONAL and OFF by default - rely on the
+# host/system VPN (geoguard's "no bundled Happ -> host VPN" fallback stays). The
+# Windows happ.ps1 can only fetch the Windows installer, so it bundles ONLY the
+# Windows Happ here; other OSes' Happ would be added by their own builder.
+# Single-target (win32 only) keeps the verified apps\happ path unchanged; a
+# multi-target build that opts in lands the Windows Happ under apps\happ-win32.
 $wantHapp = $false
 if ($NoHapp) {
     Write-Host (T 'happ_skipped_flag') -ForegroundColor DarkGray
 }
+elseif (-not $NeedWinLaunchers) {
+    # No win32 target at all -> nothing the Windows happ.ps1 could bundle.
+    Write-Host (T 'happ_none') -ForegroundColor DarkGray
+}
 else {
-    $ans = Read-Host (T 'happ_ask')   # y/N
+    $ans = Read-Host (T 'happ_ask')   # y/N  (default N, doubly so in multi-OS)
     $wantHapp = ($ans -match '^[YyДд]')
 }
 
@@ -700,8 +911,12 @@ if ($wantHapp) {
         Write-Host (T 'happ_failed_hint') -ForegroundColor DarkGray
     }
     else {
-        $happDst = Join-Path (Join-Path $StickRoot 'apps') 'happ'
-        $happArch = if ($arch -match 'ARM64') { 'arm64' } else { 'x64' }
+        # Single-target win32 build keeps the original apps\happ path (vpnup.bat
+        # default). Multi-target build uses the per-OS apps\happ-win32 layout that
+        # vpnup.bat resolves per running OS (delta point 7).
+        $happLeaf = if ($IsMultiTarget) { 'happ-win32' } else { 'happ' }
+        $happDst = Join-Path (Join-Path $StickRoot 'apps') $happLeaf
+        $happArch = if ($hostArch -match 'ARM64') { 'arm64' } else { 'x64' }
         try {
             New-Item -ItemType Directory -Force -Path $happDst | Out-Null
             # Download the setup .exe into a temp dir, then silent-install onto the stick.
@@ -757,13 +972,16 @@ else {
 }
 Write-Ok (T 'geo_written')
 
-# 6b. Copy + TEMPLATE the Windows payload launchers onto the stick root.
+# 6b. Copy + TEMPLATE the payload launchers onto the stick root.
 #     Tokens substituted in every copied file:
 #         __MODEL__  -> the chosen model (default claude-opus-4-8)
 #         __LANG__   -> ru|en  (bakes the launcher message language)
-#     Only the Windows-relevant launchers go to the stick ROOT here. NOTE:
-#     run-happ.bat is NOT copied to the root - happ.ps1's Write-HappRunner
-#     already wrote it INTO apps\happ where the launcher chain expects it.
+#     MULTI-OS delta point 4 - UNION launcher copy:
+#         any win32-*       target -> copy the Windows launcher set
+#         any linux/darwin  target -> copy the POSIX launcher set
+#     geoguard.conf + README-STICK.txt are ALWAYS present (written/copied above
+#     and below). NOTE: run-happ.{bat,sh} is NOT copied to the root - the happ
+#     helper's runner writer drops it INTO apps\happ where the chain expects it.
 $winPayload = @(
     'START.bat',
     'DIAG.bat',
@@ -771,11 +989,20 @@ $winPayload = @(
     'vpnup.bat',
     'geoguard.bat',
     'geoguard.ps1',
-    'decrypt.ps1',
-    'README-STICK.txt'
+    'decrypt.ps1'
+)
+$posixPayload = @(
+    'start.sh',
+    'diag.sh',
+    'env.sh',
+    'vpnup.sh',
+    'geoguard.sh',
+    'decrypt.sh'
 )
 
 # Write a templated copy of a payload file to $DestRoot. Returns $true if copied.
+# Line endings + BOM are chosen by file type so each OS family gets correct files
+# even when the build itself runs on Windows.
 function Copy-Template {
     param(
         [Parameter(Mandatory)][string]$Name,
@@ -791,24 +1018,38 @@ function Copy-Template {
     $text = $text.Replace('__MODEL__', $Model).Replace('__LANG__', $ChosenLang)
     $dst = Join-Path $DestRoot $Name
 
-    # .bat must be plain UTF-8 / NO BOM (cmd.exe chokes on a UTF-8 BOM at the top
-    # of a batch file; START.bat sets chcp 65001 itself). .ps1 we keep UTF-8 WITH
-    # BOM so PS 5.1 reads any RU strings; .txt we keep WITH BOM for editors.
-    if ($Name -match '\.bat$') {
-        $enc = New-Object System.Text.UTF8Encoding($false)   # no BOM
+    if ($Name -match '\.sh$') {
+        # POSIX shell scripts: LF endings, NO BOM (a BOM or CRLF breaks the shebang
+        # and `read`/`set` on Linux/macOS).
+        $enc = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($dst, ($text -replace "`r?`n", "`n"), $enc)
+    }
+    elseif ($Name -match '\.bat$') {
+        # .bat must be plain UTF-8 / NO BOM (cmd.exe chokes on a UTF-8 BOM at the
+        # top of a batch file; START.bat sets chcp 65001 itself). CRLF endings.
+        $enc = New-Object System.Text.UTF8Encoding($false)
+        [System.IO.File]::WriteAllText($dst, ($text -replace "`r?`n", "`r`n"), $enc)
     }
     else {
-        $enc = New-Object System.Text.UTF8Encoding($true)    # WITH BOM
+        # .ps1 / .txt -> UTF-8 WITH BOM so PS 5.1 reads RU strings; CRLF endings.
+        $enc = New-Object System.Text.UTF8Encoding($true)
+        [System.IO.File]::WriteAllText($dst, ($text -replace "`r?`n", "`r`n"), $enc)
     }
-    [System.IO.File]::WriteAllText($dst, ($text -replace "`r?`n", "`r`n"), $enc)
     return $true
 }
 
+# Build the union file list once, so single-target stays identical to before.
+$payloadFiles = New-Object System.Collections.Generic.List[string]
+if ($NeedWinLaunchers) { foreach ($f in $winPayload) { $payloadFiles.Add($f) } }
+if ($NeedPosixLaunchers) { foreach ($f in $posixPayload) { $payloadFiles.Add($f) } }
+# README-STICK.txt is shared across all OSes (always copied).
+$payloadFiles.Add('README-STICK.txt')
+
 $copied = 0
-foreach ($f in $winPayload) {
+foreach ($f in $payloadFiles) {
     if (Copy-Template -Name $f -DestRoot $StickRoot) { $copied++ }
 }
-Write-Ok ((T 'payload_copied') -f $copied, $winPayload.Count)
+Write-Ok ((T 'payload_copied') -f $copied, $payloadFiles.Count)
 
 # 6c. SELF-TEST  -  prove the produced stick actually works end-to-end.
 #     (1) claude --version straight off the stick (no token / proxy needed).
@@ -816,15 +1057,21 @@ Write-Ok ((T 'payload_copied') -f $copied, $winPayload.Count)
 #         password the user enters now (re-typed so we never keep it in memory).
 Write-Step (T 'step_selftest')
 
-# (1) version
-try {
-    $verOut = & $binDst '--version' 2>&1 | Out-String
-    if ($LASTEXITCODE -eq 0 -and $verOut.Trim()) {
-        Write-Ok ((T 'selftest_version') -f $verOut.Trim())
+# (1) version - only when a host-runnable win32 binary is on the stick. In a
+#     cross-build (e.g. only linux/darwin targets) there is nothing to exec here.
+if ($hostBinDst -and (Test-Path -LiteralPath $hostBinDst)) {
+    try {
+        $verOut = & $hostBinDst '--version' 2>&1 | Out-String
+        if ($LASTEXITCODE -eq 0 -and $verOut.Trim()) {
+            Write-Ok ((T 'selftest_version') -f $verOut.Trim())
+        }
+        else { Write-Warn2 (T 'selftest_version_fail') }
     }
-    else { Write-Warn2 (T 'selftest_version_fail') }
+    catch { Write-Warn2 ((T 'selftest_version_err') -f $_.Exception.Message) }
 }
-catch { Write-Warn2 ((T 'selftest_version_err') -f $_.Exception.Message) }
+else {
+    Write-Host (T 'token_cross') -ForegroundColor DarkGray
+}
 
 # (2) decrypt round-trip (crypto.ps1's own helper - same byte-format as the stick's
 #     decrypt.ps1, but no subprocess needed). Re-prompt for the password.
@@ -853,7 +1100,9 @@ else {
 Write-Host ''
 Write-Host '============================================================' -ForegroundColor Green
 Write-Ok ((T 'done') -f $StickRoot)
-Write-Host ((T 'done_run') -f $StickRoot) -ForegroundColor White
+Write-Host ((T 'done_targets') -f ($Targets -join ', ')) -ForegroundColor White
+if ($NeedWinLaunchers) { Write-Host ((T 'done_run') -f $StickRoot) -ForegroundColor White }
+if ($NeedPosixLaunchers) { Write-Host ((T 'done_run_posix') -f $StickRoot) -ForegroundColor White }
 Write-Host (T 'done_safety') -ForegroundColor DarkGray
 Write-Host '============================================================' -ForegroundColor Green
 exit 0

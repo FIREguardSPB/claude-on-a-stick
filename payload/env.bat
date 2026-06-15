@@ -22,6 +22,13 @@ REM       prints the token to stdout (prompt goes to stderr per §4).
 REM    2. config\oauth.txt  -> plaintext fallback (builder may write this when
 REM       the user opts out of at-rest encryption). Read verbatim, first line.
 REM
+REM  Binary resolution (multi-OS stick): the per-platform binary lives at
+REM    bin\win32-<arch>\claude.exe   (arch = x64 | arm64)
+REM  We map PROCESSOR_ARCHITECTURE (AMD64->x64, ARM64->arm64; WOW64 honoured) to
+REM  the native subdir, fall back to ANY present win32-* subdir, then to the
+REM  legacy flat bin\claude.exe (single-target builds), and error if none. The
+REM  resolved path is exported as CLAUDE_BIN; START.bat exec's "%CLAUDE_BIN%".
+REM
 REM  cmd GOTCHA: no unescaped ( ) inside an echo within an if(...) block. We use
 REM  goto labels for every branch below.
 REM ============================================================================
@@ -47,6 +54,41 @@ set "DISABLE_UPDATES=1"
 
 REM -- Make sure no stale token lingers in this session ------------------------
 set "CLAUDE_CODE_OAUTH_TOKEN="
+
+REM ---------------------------------------------------------------------------
+REM  Resolve CLAUDE_BIN = the right per-OS/arch claude.exe for THIS host.
+REM  Layout: bin\win32-<arch>\claude.exe  (arch x64|arm64). Order:
+REM    1. native arch subdir (from PROCESSOR_ARCHITECTURE / WOW64)
+REM    2. the OTHER win32 arch subdir present (x64 binaries run under WOW64 on
+REM       ARM64; arm64 won't run on x64 but we still surface it so DIAG matches)
+REM    3. legacy flat bin\claude.exe  (single-target builds before subdirs)
+REM  Sets CLAUDE_BIN and jumps to :bin_ok, or :no_binary if nothing is present.
+REM ---------------------------------------------------------------------------
+set "CLAUDE_BIN="
+set "WINARCH=x64"
+if /I "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "WINARCH=arm64"
+if /I "%PROCESSOR_ARCHITEW6432%"=="ARM64" set "WINARCH=arm64"
+
+if exist "%STICK%\bin\win32-%WINARCH%\claude.exe" goto bin_native
+REM  Native subdir absent: try the other arch, then any win32-* dir, then flat.
+if exist "%STICK%\bin\win32-x64\claude.exe" set "CLAUDE_BIN=%STICK%\bin\win32-x64\claude.exe"
+if not defined CLAUDE_BIN if exist "%STICK%\bin\win32-arm64\claude.exe" set "CLAUDE_BIN=%STICK%\bin\win32-arm64\claude.exe"
+if not defined CLAUDE_BIN if exist "%STICK%\bin\claude.exe" set "CLAUDE_BIN=%STICK%\bin\claude.exe"
+if defined CLAUDE_BIN goto bin_ok
+goto no_binary
+
+:bin_native
+set "CLAUDE_BIN=%STICK%\bin\win32-%WINARCH%\claude.exe"
+goto bin_ok
+
+:no_binary
+echo.
+echo [env] No claude.exe found under bin\win32-x64, bin\win32-arm64, or bin\
+echo       (host arch: %WINARCH%). Re-run the builder for a win32-%WINARCH% target.
+exit /b 1
+
+:bin_ok
+REM  CLAUDE_BIN now points at a real file; START.bat exec's it.
 
 REM ---------------------------------------------------------------------------
 REM  Token unlock. Prefer the encrypted blob; fall back to plaintext oauth.txt.

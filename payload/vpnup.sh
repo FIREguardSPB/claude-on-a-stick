@@ -29,7 +29,20 @@ if ! command -v t >/dev/null 2>&1; then
   t() { shift 2>/dev/null || true; shift 2>/dev/null || true; printf '%s' "${*:-}"; }
 fi
 
-__HAPP_DIR="$STICK/apps/happ"
+# --- resolve the bundled Happ dir for THIS OS (multi-OS layout) --------------
+# Multi-OS sticks bundle one tree per OS family: apps/happ-<os> (os = linux|mac,
+# per uname; build.ps1 writes apps/happ-win32). A single-target build keeps the
+# legacy flat apps/happ. Prefer this OS's per-OS dir, then fall back to flat -
+# matching what the builders write so the bundled VPN is actually found.
+case "$(uname -s 2>/dev/null)" in
+  Darwin*) __HAPP_OS="mac" ;;
+  *)       __HAPP_OS="linux" ;;
+esac
+if [ -d "$STICK/apps/happ-$__HAPP_OS" ]; then
+  __HAPP_DIR="$STICK/apps/happ-$__HAPP_OS"
+else
+  __HAPP_DIR="$STICK/apps/happ"
+fi
 
 # --- no bundled VPN -> nothing to do -----------------------------------------
 if [ ! -d "$__HAPP_DIR" ]; then
@@ -40,12 +53,12 @@ fi
 # --- launch Happ via the redirecting wrapper ---------------------------------
 # run-happ.sh sets XDG_CONFIG_HOME/HOME into the stick so Happ never touches the
 # host profile. It backgrounds Happ and returns.
-if [ -x "$STICK/apps/happ/run-happ.sh" ] || [ -f "$STICK/apps/happ/run-happ.sh" ]; then
+if [ -x "$__HAPP_DIR/run-happ.sh" ] || [ -f "$__HAPP_DIR/run-happ.sh" ]; then
   printf '%s\n' "$(t vpn launching 'Launching bundled Happ (proxy mode)…')" >&2
   # Start it; ignore failure here - we verify by probing the proxy below.
-  bash "$STICK/apps/happ/run-happ.sh" >/dev/null 2>&1 || true
+  bash "$__HAPP_DIR/run-happ.sh" >/dev/null 2>&1 || true
 else
-  printf '%s\n' "$(t vpn no_wrapper 'apps/happ/run-happ.sh missing - cannot launch Happ.')" >&2
+  printf '%s\n' "$(t vpn no_wrapper 'run-happ.sh missing - cannot launch Happ.')" >&2
 fi
 
 # --- auto-detect the live HTTP proxy port ------------------------------------

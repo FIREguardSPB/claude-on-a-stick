@@ -96,10 +96,12 @@ fi
   exit 1
 }
 
-# --- step 4: locate the claude binary, cd to projects, exec ------------------
-CLAUDE_BIN="$STICK/bin/claude"
-if [ ! -x "$CLAUDE_BIN" ]; then
-  printf '%s\n' "$(t start no_binary 'bin/claude not found or not executable - was the stick built?')" >&2
+# --- step 4: cd to projects, exec the resolved claude binary -----------------
+# env.sh resolved CLAUDE_BIN to the right per-OS/arch binary
+# (bin/<os>-<arch>[-musl]/claude, with fallbacks) and already aborted if none
+# was present, so by here it is guaranteed set and executable.
+if [ -z "${CLAUDE_BIN:-}" ] || [ ! -x "$CLAUDE_BIN" ]; then
+  printf '%s\n' "$(t start no_binary 'claude binary not found for this OS/arch under bin/ - was the stick built for this platform?')" >&2
   exit 1
 fi
 

@@ -3,7 +3,7 @@
 # Mirrors DIAG.bat. Does NOT launch Claude and does NOT prompt for the password.
 #
 # Reports, with PASS/WARN/FAIL markers:
-#   - stick layout (bin/claude, config/oauth.enc, settings, decrypt.sh)
+#   - stick layout (resolved per-OS/arch bin, config/oauth.enc, settings, decrypt.sh)
 #   - required CLI tools (curl, openssl/perl for decrypt)
 #   - geoguard config + DIRECT exit-country detection (no proxy, no VPN touched)
 #   - bundled Happ presence + live proxy-port probe (if apps/happ exists)
@@ -26,12 +26,64 @@ ok()   { printf '%s %s\n' "$PASS" "$1"; }
 warn() { printf '%s %s\n' "$WARN" "$1"; }
 fail() { printf '%s %s\n' "$FAIL" "$1"; }
 
+# Resolve CLAUDE_BIN exactly as env.sh does (per-OS/arch + musl, with fallbacks)
+# so this report names the same binary start.sh would actually exec. Kept in
+# lockstep with env.sh::__cas_resolve_bin.
+__cas_resolve_bin() {
+  __os="linux"; __arch="x64"; __musl=""
+  case "$(uname -s 2>/dev/null)" in
+    Linux*)  __os="linux"  ;;
+    Darwin*) __os="darwin" ;;
+    *)       __os="linux"  ;;
+  esac
+  case "$(uname -m 2>/dev/null)" in
+    x86_64|amd64)  __arch="x64"   ;;
+    aarch64|arm64) __arch="arm64" ;;
+    *)             __arch="x64"   ;;
+  esac
+  if [ "$__os" = "linux" ]; then
+    if (ldd --version 2>&1 | grep -qi musl) || ls /lib/ld-musl-* >/dev/null 2>&1; then
+      __musl="-musl"
+    fi
+  fi
+  if [ -n "$__musl" ]; then
+    __cands="${__os}-${__arch}-musl ${__os}-${__arch}"
+  else
+    __cands="${__os}-${__arch} ${__os}-${__arch}-musl"
+  fi
+  case "$__arch" in
+    x64)   __other="arm64" ;;
+    arm64) __other="x64"   ;;
+    *)     __other=""      ;;
+  esac
+  [ -n "$__other" ] && __cands="$__cands ${__os}-${__other} ${__os}-${__other}-musl"
+  CLAUDE_BIN=""
+  for __p in $__cands; do
+    if [ -x "$STICK/bin/$__p/claude" ]; then CLAUDE_BIN="$STICK/bin/$__p/claude"; break; fi
+  done
+  if [ -z "$CLAUDE_BIN" ]; then
+    for __d in "$STICK/bin/${__os}-"*/; do
+      if [ -x "${__d}claude" ]; then CLAUDE_BIN="${__d}claude"; break; fi
+    done
+  fi
+  if [ -z "$CLAUDE_BIN" ] && [ -x "$STICK/bin/claude" ]; then
+    CLAUDE_BIN="$STICK/bin/claude"
+  fi
+  CLAUDE_PLAT="${__os}-${__arch}${__musl}"
+}
+__cas_resolve_bin
+
 printf '%s\n' "$(t diag header '=== claude-on-a-stick diagnostics ===')"
 printf '%s %s\n\n' "$(t diag stick_at 'Stick root:')" "$STICK"
 
 # --- 1. layout ---------------------------------------------------------------
 printf '%s\n' "$(t diag sec_layout '-- Layout --')"
-[ -x "$STICK/bin/claude" ] && ok "bin/claude (executable)" || fail "bin/claude missing or not executable"
+printf '   host platform: %s\n' "$CLAUDE_PLAT"
+if [ -n "${CLAUDE_BIN:-}" ] && [ -x "$CLAUDE_BIN" ]; then
+  ok "claude binary: ${CLAUDE_BIN#"$STICK/"} (executable)"
+else
+  fail "no claude binary for $CLAUDE_PLAT under bin/ (looked for bin/$CLAUDE_PLAT/claude + fallbacks)"
+fi
 # Token source (mirrors DIAG.bat): encrypted blob preferred; plaintext is a
 # defensive fallback; neither is a build failure.
 if [ -f "$STICK/config/oauth.enc" ]; then
@@ -101,10 +153,17 @@ fi
 printf '\n'
 
 # --- 4. bundled VPN ----------------------------------------------------------
+# Resolve the Happ dir the same way vpnup.sh does: prefer this OS's per-OS tree
+# (apps/happ-<os>, multi-OS layout) then fall back to flat apps/happ.
 printf '%s\n' "$(t diag sec_vpn '-- Bundled VPN (Happ) --')"
-if [ -d "$STICK/apps/happ" ]; then
-  ok "apps/happ present"
-  [ -f "$STICK/apps/happ/run-happ.sh" ] && ok "run-happ.sh present" || warn "run-happ.sh missing"
+case "$(uname -s 2>/dev/null)" in
+  Darwin*) __HAPP_OS="mac" ;;
+  *)       __HAPP_OS="linux" ;;
+esac
+if [ -d "$STICK/apps/happ-$__HAPP_OS" ]; then __HAPP_DIR="$STICK/apps/happ-$__HAPP_OS"; else __HAPP_DIR="$STICK/apps/happ"; fi
+if [ -d "$__HAPP_DIR" ]; then
+  ok "${__HAPP_DIR#"$STICK/"} present"
+  [ -f "$__HAPP_DIR/run-happ.sh" ] && ok "run-happ.sh present" || warn "run-happ.sh missing"
   # Probe candidate ports WITHOUT launching Happ - just see if one already answers.
   if command -v curl >/dev/null 2>&1; then
     __live=""

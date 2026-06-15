@@ -47,17 +47,20 @@ claude-on-a-stick/
     decrypt.ps1 decrypt.sh
     README-STICK.txt
 ```
-Builder writes onto the stick: `bin/claude(.exe)`, `config/{oauth.enc,settings.json,.claude.json}`,
-`apps/happ/…` (optional), `projects/`, `tmp/`, plus the payload launchers (templated for the chosen OS + language + model).
+Builder writes onto the stick: `bin/<platform>/claude(.exe)`, `config/{oauth.enc,settings.json,.claude.json}`,
+`apps/happ-<os>/…` (optional), `projects/`, `tmp/`, plus the payload launchers (templated for the chosen OS(es) + language + model).
+The `bin/<platform>/` layout is used for **both** single- and multi-target builds so the launcher binary-resolution path is uniform (see §12).
 
 ## 2. Stick layout (the produced artifact)
+The layout is identical whether the stick was built for one OS or several - only the set of
+`bin/<platform>/` subdirs and launcher files present differs (see §12).
 ```
 <STICK>/
   START.(bat|sh)   DIAG.(bat|sh)   env.(bat|sh)   vpnup.(bat|sh)
   geoguard.(bat|sh) geoguard.ps1   geoguard.conf  decrypt.(ps1|sh)
-  bin/claude(.exe)
-  config/  oauth.enc  settings.json  .claude.json     # = CLAUDE_CONFIG_DIR
-  apps/happ/ …  apps/happ/run-happ.(bat|sh)           # optional VPN
+  bin/<platform>/claude(.exe)          # one subdir per built platform, e.g. bin/win32-x64/claude.exe
+  config/  oauth.enc  settings.json  .claude.json     # = CLAUDE_CONFIG_DIR (shared by every OS)
+  apps/happ-<os>/ …  run-happ.(bat|sh)                # optional VPN, one per bundled OS
   projects/   tmp/   README-STICK.txt
 ```
 
@@ -66,7 +69,7 @@ Builder writes onto the stick: `bin/claude(.exe)`, `config/{oauth.enc,settings.j
 1. `vpnup` - if `apps/happ` exists: bring Happ up (proxy mode), export proxy env. (Skippable; see geoguard step 0.)
 2. `geoguard` - see §5. Aborts launch if exit country is blocked.
 3. token unlock (`env` calls `decrypt`) - prompt **"Stick password"**, decrypt `config/oauth.enc` to memory.
-4. `cd` to `projects/`, exec claude.
+4. `cd` to `projects/`, exec `"$CLAUDE_BIN"` (resolved by `env` to the right per-OS/arch binary under `bin/<platform>/` - see §12).
 
 Env set before claude (names are EXACT):
 - `CLAUDE_CONFIG_DIR=<STICK>/config`
@@ -76,7 +79,7 @@ Env set before claude (names are EXACT):
 - `CLAUDE_CODE_OAUTH_TOKEN=<decrypted token>` (in memory only - never written to disk)
 - `DISABLE_AUTOUPDATER=1` and `DISABLE_UPDATES=1`
 - If VPN active: `HTTPS_PROXY=http://127.0.0.1:<port>`, `HTTP_PROXY=` same, `ALL_PROXY=socks5://127.0.0.1:<port>` (only if a SOCKS port is known), `NO_PROXY=localhost,127.0.0.1,::1`
-- Launch: `claude --model <MODEL> %*` / `"$@"`  (MODEL baked at build, default `claude-opus-4-8`)
+- Launch: `"%CLAUDE_BIN%" --model <MODEL> %*` / `"$CLAUDE_BIN" --model <MODEL> "$@"`  (`CLAUDE_BIN` resolved by `env`; MODEL baked at build, default `claude-opus-4-8`)
 
 cmd gotcha (LEARNED THE HARD WAY): **never put unescaped `(` `)` inside an `echo` that sits within a cmd `if ( … )` block** - it closes the block early ("Непредвиденное появление: then"). Use `goto` labels instead of parenthesised blocks in .bat files.
 
@@ -128,8 +131,9 @@ NO VC++ runtime is bundled with Happ on Windows - most Win10/11 have it; if a ba
 Manifest host: `https://downloads.claude.ai/claude-code-releases/`.
 - Resolve version: GET `/stable` (or `/latest`) → bare semver.
 - GET `/<ver>/manifest.json` → `platforms.<plat>.{binary,checksum,size}`. Optionally verify `manifest.json.sig` with the GPG release key when `gpg` is present.
-- Download `/<ver>/<plat>/<binary>` and **sha256-verify** against `checksum`; abort on mismatch.
+- For **each** selected platform: download `/<ver>/<plat>/<binary>` into its own `bin/<plat>/` subdir and **sha256-verify** against `checksum`; abort on mismatch; `chmod +x` the posix ones.
 - Platforms: `win32-x64`, `win32-arm64`, `darwin-x64`, `darwin-arm64`, `linux-x64`, `linux-arm64`, `linux-x64-musl`, `linux-arm64-musl`. Binary name: `claude.exe` (win) / `claude` (else). Self-contained (no Node).
+- Multi-target: the target step may pick **several** platforms in one run (see §12); each lands in its own `bin/<plat>/`.
 
 ## 9. i18n (RU/EN) - builder UX
 - Ask language FIRST (default from `$LANG` / `Get-Culture`; single keypress to override).
@@ -145,3 +149,20 @@ Manifest host: `https://downloads.claude.ai/claude-code-releases/`.
 
 ## 11. Security / what NOT to commit
 `.gitignore` must exclude: `*.exe`, `claude`, `bin/`, `apps/`, `*.enc`, `oauth*`, `*.token`, any `*.json` that could hold creds, `dist/`, built sticks, Happ payloads. README states clearly: binaries (Claude, Happ) are downloaded from official sources at build time and are NOT redistributed here; the auth token is the user's own (`claude setup-token`), AES-encrypted with their password; transcripts/work on the stick are plaintext under token-only encryption → for client PII, use whole-volume encryption (BitLocker To Go / VeraCrypt / LUKS) - documented in SECURITY.md.
+
+## 12. Multi-OS sticks ("one stick, any OS")
+One USB that runs Claude Code on **Windows, Linux AND macOS** from the **same encrypted token**.
+Built on top of the existing single-target builder/launchers; **single-target builds keep working unchanged** (the single target defaults to **this host**).
+
+1. **Target step (multi-select).** Accept a **comma-separated** list of platforms, plus a shortcut `A` = "all common" = `win32-x64` + `linux-x64` + `darwin-arm64`. Default stays the single host target. Choosable platforms: `win32-x64`, `win32-arm64`, `linux-x64`, `linux-arm64`, `linux-x64-musl`, `linux-arm64-musl`, `darwin-x64`, `darwin-arm64`.
+2. **Format ONCE.** The destructive USB format (§10) runs a **single time** regardless of how many targets are selected.
+3. **Binary layout (uniform).** `bin/<platform>/claude` (posix) or `bin/<platform>/claude.exe` (windows), used for **both** single- and multi-target builds. Download + **sha256-verify** each selected platform into its own subdir; `chmod +x` the posix ones (§8).
+4. **Launcher union.** Copy the **Windows** set (`START.bat DIAG.bat env.bat vpnup.bat geoguard.bat geoguard.ps1 decrypt.ps1 run-happ.bat`) if **any** `win32-*` target was chosen; copy the **POSIX** set (`start.sh diag.sh env.sh vpnup.sh geoguard.sh decrypt.sh run-happ.sh`) if **any** linux/darwin target was chosen. `geoguard.conf` + `README-STICK.txt` are **always** copied.
+5. **Shared, written ONCE.** `config/` (`oauth.enc`, `settings.json`, `.claude.json`), `projects/`, `tmp/`. The AES token is **OS-agnostic** - PowerShell and openssl decrypt the same `oauth.enc` (verified; AES format and env-var names are **unchanged** from §3/§4). The token menu + encrypt step happen **once**.
+6. **Launcher binary-resolution (`CLAUDE_BIN`).** `env.bat`/`env.sh` compute `CLAUDE_BIN` to the right per-OS/arch binary; `START`/`DIAG` exec `"$CLAUDE_BIN"`.
+   - `env.bat`: `PROCESSOR_ARCHITECTURE` (`AMD64`→`x64`, `ARM64`→`arm64`) → `bin/win32-<arch>/claude.exe`; fall back to any present `win32-*` dir; error if none.
+   - `env.sh`: `uname -s` (`Linux`→`linux`, `Darwin`→`darwin`) + `uname -m` (`x86_64`→`x64`, `aarch64|arm64`→`arm64`) + linux musl detection (`ldd --version` mentions `musl`, or `/lib/ld-musl*` exists → append `-musl`) → `bin/<os>-<arch>[-musl]/claude`; fall back to the closest present variant; error if none.
+7. **Happ/VPN per-OS (optional).** Happ binaries are OS-specific and ~300MB each. In multi-OS mode VPN bundling stays **optional**; if requested, bundle Happ per selected OS into `apps/happ-<os>/` and `vpnup` resolves the right one for the running OS. **Default multi-OS = NO bundled Happ** (rely on host/system VPN; the geoguard "no `apps/happ` → host VPN" fallback stays). Keep it simple + documented.
+8. **Docs.** Both READMEs headline this near the top ("One stick, every OS" / "Одна флешка - любая ОС"); the layout/flow sections and `docs/ARCHITECTURE.md` reflect multi-target + binary-resolution.
+
+INVARIANTS: do **not** change the AES at-rest format (§4) or any env-var name (§3); single-target builds must keep working; verify by **running** `build.sh` (stubbed multi), `build.ps1` under `pwsh` StrictMode, and the env resolution - not by ParseFile alone. Never commit binaries/secrets (§11).

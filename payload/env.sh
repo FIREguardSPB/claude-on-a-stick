@@ -43,6 +43,73 @@ export ANTHROPIC_API_KEY=""
 export DISABLE_AUTOUPDATER=1
 export DISABLE_UPDATES=1
 
+# --- 2b. resolve CLAUDE_BIN for THIS OS/arch ---------------------------------
+# Multi-OS layout: the per-platform binary lives at bin/<os>-<arch>[-musl]/claude
+#   os   = linux | darwin    (uname -s)
+#   arch = x64 | arm64       (uname -m: x86_64->x64, aarch64|arm64->arm64)
+#   -musl appended on Linux when the C library is musl (ldd mentions musl, or a
+#         /lib/ld-musl* loader exists - e.g. Alpine).
+# We try the exact native variant first, then a sensible fallback list (drop
+# musl<->glibc, then any present <os>-* dir of the right OS), then the legacy
+# flat bin/claude (single-target builds before subdirs), and finally error.
+# Exported as CLAUDE_BIN; start.sh exec's "$CLAUDE_BIN".
+__cas_resolve_bin() {
+  __os="linux"; __arch="x64"; __musl=""
+  case "$(uname -s 2>/dev/null)" in
+    Linux*)  __os="linux"  ;;
+    Darwin*) __os="darwin" ;;
+    *)       __os="linux"  ;;  # best-effort default
+  esac
+  case "$(uname -m 2>/dev/null)" in
+    x86_64|amd64)        __arch="x64"   ;;
+    aarch64|arm64)       __arch="arm64" ;;
+    *)                   __arch="x64"   ;;
+  esac
+  if [ "$__os" = "linux" ]; then
+    # musl detection: ldd --version output mentions musl, or a musl loader exists.
+    if (ldd --version 2>&1 | grep -qi musl) || ls /lib/ld-musl-* >/dev/null 2>&1; then
+      __musl="-musl"
+    fi
+  fi
+
+  # Candidate plats, most-specific first. On darwin __musl is always empty.
+  if [ -n "$__musl" ]; then
+    __cands="${__os}-${__arch}-musl ${__os}-${__arch}"
+  else
+    __cands="${__os}-${__arch} ${__os}-${__arch}-musl"
+  fi
+  # Also try the same-OS other arch as a last structured guess (e.g. x64 binary
+  # under Rosetta on darwin-arm64), keeping OS correct.
+  case "$__arch" in
+    x64)   __other="arm64" ;;
+    arm64) __other="x64"   ;;
+    *)     __other=""      ;;
+  esac
+  [ -n "$__other" ] && __cands="$__cands ${__os}-${__other} ${__os}-${__other}-musl"
+
+  CLAUDE_BIN=""
+  for __p in $__cands; do
+    if [ -x "$STICK/bin/$__p/claude" ]; then CLAUDE_BIN="$STICK/bin/$__p/claude"; break; fi
+  done
+  # Next: ANY present <os>-* subdir (closest by OS), then legacy flat bin/claude.
+  if [ -z "$CLAUDE_BIN" ]; then
+    for __d in "$STICK/bin/${__os}-"*/; do
+      if [ -x "${__d}claude" ]; then CLAUDE_BIN="${__d}claude"; break; fi
+    done
+  fi
+  if [ -z "$CLAUDE_BIN" ] && [ -x "$STICK/bin/claude" ]; then
+    CLAUDE_BIN="$STICK/bin/claude"
+  fi
+  # Expose the detected plat label for diagnostics / error messages.
+  CLAUDE_PLAT="${__os}-${__arch}${__musl}"
+}
+__cas_resolve_bin
+export CLAUDE_BIN CLAUDE_PLAT
+if [ -z "${CLAUDE_BIN:-}" ]; then
+  printf '%s\n' "$(t err no_binary "No claude binary for this host (detected ${CLAUDE_PLAT}); looked under bin/${CLAUDE_PLAT}/claude and same-OS fallbacks - re-run the builder for a ${CLAUDE_PLAT} target.")" >&2
+  return 1 2>/dev/null || exit 1
+fi
+
 # --- 3. unlock the OAuth token -----------------------------------------------
 # Token source (mirrors env.bat, in priority order):
 #   1. config/oauth.enc  -> decrypt.sh prompts for the Stick password on stderr
