@@ -174,6 +174,7 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
             token_choice_new     = "  [2] Get a new one now - opens your browser via 'claude setup-token'"
             token_choice_ask     = 'Choice [1/2]'
             token_running        = 'Running: claude setup-token (config redirected onto the stick) ...'
+            token_launch_hint    = 'A browser window will open. Log in, then setup-token will PRINT a long token (sk-ant-oat...) right here in this console. COPY that whole token, return here, and paste it at the prompt below.'
             token_cmd_failed     = 'claude setup-token exited with code {0}.'
             token_not_captured   = 'Could not auto-capture the token from setup-token output.'
             token_cross          = 'Cross-platform build: cannot run the target binary here - paste the token manually.'
@@ -318,6 +319,7 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
             token_choice_new     = "  [2] Получить новый сейчас - откроется браузер ('claude setup-token')"
             token_choice_ask     = 'Выбор [1/2]'
             token_running        = 'Выполняется: claude setup-token (конфиг перенаправлен на флешку) ...'
+            token_launch_hint    = 'Откроется окно браузера. Войдите в систему, после чего setup-token РАСПЕЧАТАЕТ длинный токен (sk-ant-oat...) прямо здесь, в этой консоли. СКОПИРУЙТЕ этот токен целиком, вернитесь сюда и вставьте его в приглашение ниже.'
             token_cmd_failed     = 'claude setup-token завершился с кодом {0}.'
             token_not_captured   = 'Не удалось автоматически извлечь токен из вывода setup-token.'
             token_cross          = 'Сборка под другую платформу: целевой бинарник здесь не запустить - вставьте токен вручную.'
@@ -801,20 +803,23 @@ if ($choice -eq '2') {
         $env:HOME = $stickConfig
         $env:ANTHROPIC_API_KEY = ''   # never let a host key shadow the subscription token
 
+        # setup-token is interactive (browser OAuth). It MUST run with the console
+        # FULLY INHERITED - capturing its stdout (e.g. `$x = & claude setup-token`)
+        # breaks the OAuth flow: the browser login completes but the process hangs
+        # forever because the redirected pipe never lets it finish printing. So we
+        # let it write straight to the console exactly as a manual run does. On
+        # success it PRINTS the long-lived token here; the user copies it and pastes
+        # it at the masked prompt below (same paste path as choice [1]).
         Write-Host (T 'token_running') -ForegroundColor DarkGray
-        # setup-token is interactive (browser OAuth) and prints the long-lived
-        # token to stdout on success. Capture stdout; pull the token-ish line.
-        # Uses the host-matching win32 binary downloaded above ($hostBinDst).
-        $tokenOut = & $hostBinDst 'setup-token' 2>&1 | Out-String
-        if ($LASTEXITCODE -ne 0) { throw ((T 'token_cmd_failed') -f $LASTEXITCODE) }
-        foreach ($line in ($tokenOut -split "`r?`n")) {
-            $l = $line.Trim()
-            if ($l -match '^[A-Za-z0-9_\-\.]{24,}$') { $tokenPlain = $l }
-        }
+        Write-Host (T 'token_launch_hint') -ForegroundColor Yellow
+        Write-Host ''
+        & $hostBinDst 'setup-token'   # NO stdout/stdin redirection - fully inherited
+        Write-Host ''
+        $tokenPlain = Read-TokenPaste (T 'token_paste')
         if ([string]::IsNullOrWhiteSpace($tokenPlain)) { throw (T 'token_not_captured') }
     }
     catch {
-        # setup-token failed or yielded nothing -> warn and fall through to paste.
+        # setup-token failed or nothing was pasted -> warn and fall through to paste.
         Write-Warn2 (T 'token_not_captured')
         $tokenPlain = $null
     }

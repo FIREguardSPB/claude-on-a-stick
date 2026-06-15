@@ -732,14 +732,22 @@ setup_and_encrypt_token() {
 
 	if [ "$choice" = "2" ]; then
 		info "$(t running_setup_token)"
-		# `claude setup-token` is interactive (opens browser / device flow) and
-		# prints the long-lived token. We capture stdout and strip CR/LF, falling
-		# back to manual paste if capture fails.
+		# `claude setup-token` is interactive (opens browser / device flow).
+		# It MUST run with the console FULLY INHERITED - capturing its stdout
+		# (e.g. `token=$("$host_bin" setup-token)`) breaks the OAuth flow: the
+		# browser login completes but the process hangs forever because the
+		# redirected pipe never lets it finish printing. So we let it write
+		# straight to the terminal exactly as a manual run does. On success it
+		# PRINTS the long-lived token here; the user copies it and pastes it at
+		# the masked prompt below (same paste path as choice [1]).
+		warn "$(t setup_token_launch_hint)"
+		printf '\n' >&2
 		set +e
-		token=$("$host_bin" setup-token 2>/dev/null | tr -d '\r\n')
-		local rc=$?
+		"$host_bin" setup-token   # NO command substitution - fully inherited
 		set -e
-		if [ "$rc" -ne 0 ] || [ -z "$token" ]; then
+		printf '\n' >&2
+		prompt_into token "$(t paste_token)" mask
+		if [ -z "$token" ]; then
 			warn "$(t setup_token_capture_failed)"
 			token=""
 		fi

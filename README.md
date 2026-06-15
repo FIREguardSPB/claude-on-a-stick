@@ -128,10 +128,23 @@ sudo ./builders/posix/build.sh      # root needed to format the USB
 ```
 
 ### On Windows
+
+Windows blocks running `.ps1` scripts by default (`running scripts is disabled
+on this system`). Use **either** option below; both bypass that policy for this
+one script only. Run as **Administrator** (needed to format the USB).
+
+**Easiest - double-click the wrapper:**
+
+1. `git clone https://github.com/<you>/claude-on-a-stick.git`
+2. Open the `builders\windows` folder.
+3. Right-click **`run-build.bat`** -> **Run as administrator** (or just
+   double-click it). It launches `build.ps1` with the execution policy bypassed.
+
+**Or run PowerShell directly** (in an elevated PowerShell window):
 ```powershell
 git clone https://github.com/<you>/claude-on-a-stick.git
 cd claude-on-a-stick
-# Run an elevated PowerShell (admin needed to format the USB):
+# admin needed to format the USB; -ExecutionPolicy Bypass avoids the "scripts are disabled" error:
 powershell -ExecutionPolicy Bypass -File .\builders\windows\build.ps1
 ```
 

@@ -124,9 +124,23 @@
 Сборщик интерактивный и запускается на той ОС, под которую (или на которой) вы
 делаете флешку:
 
-- **Linux / macOS:** `builders/posix/build.sh`
+- **Linux / macOS:** `builders/posix/build.sh` (нужен root для форматирования USB):
+  `sudo ./builders/posix/build.sh`
 - **Windows:** `builders/windows/build.ps1` (полноценный, первого класса -
   аудитория на Windows скачивает и запускает именно его)
+
+**Windows: запуск сборщика.** По умолчанию Windows блокирует выполнение `.ps1`
+(`running scripts is disabled on this system`). Запускайте от имени
+**администратора** (нужно для форматирования USB) одним из двух способов; оба
+обходят запрет только для этого скрипта:
+
+- **Проще всего:** в папке `builders\windows` щёлкните **`run-build.bat`** правой
+  кнопкой -> «Запуск от имени администратора» (или просто двойной клик). Обёртка
+  запускает `build.ps1` с обходом политики выполнения.
+- **Либо напрямую** в окне PowerShell с повышенными правами:
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\builders\windows\build.ps1
+  ```
 
 Порядок шагов сборщика:
 
