@@ -1,0 +1,66 @@
+# ---------------------------------------------------------------------------
+# claude-on-a-stick — .gitignore
+#
+# This repo ships ONLY logic (builders, launcher templates, docs). Everything
+# downloaded or entered at BUILD time — the Claude binary, the Happ VPN, the
+# user's auth token and their subscription link — lands on the USB stick and
+# MUST NEVER be committed. See CONTRACTS.md §11.
+# ---------------------------------------------------------------------------
+
+# --- Downloaded executables / binaries (Claude Code, helpers) --------------
+*.exe
+claude
+bin/
+# (allow nothing under bin/ — it is produced by the builder on the stick)
+
+# --- Bundled apps (Happ VPN payload, run wrappers, extracted installers) ---
+apps/
+# Happ installer artifacts that may be downloaded into the working dir
+setup-Happ*.exe
+Happ*.deb
+Happ*.rpm
+Happ*.pkg.tar.zst
+Happ*.dmg
+*.app/
+
+# --- Encrypted token / secrets (token-only AES at rest) --------------------
+*.enc
+oauth*
+*.token
+
+# --- Subscription links (Happ deep links / raw sub URLs) -------------------
+*.sub
+sub.txt
+subscription*
+happ-link*
+
+# --- Any JSON that could hold credentials (settings/.claude.json are
+#     templated onto the stick by the builder, never committed) -------------
+*.json
+# keep package manifests etc. explicitly if ever added:
+!package.json
+!tsconfig.json
+
+# --- Built sticks / build output / staging ---------------------------------
+dist/
+build/
+out/
+stick/
+CLAUDE/
+*.img
+*.iso
+
+# --- Local config / scratch ------------------------------------------------
+config/
+projects/
+tmp/
+*.log
+
+# --- OS / editor cruft -----------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+.idea/
+.vscode/
