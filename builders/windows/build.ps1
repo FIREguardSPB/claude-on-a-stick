@@ -84,16 +84,21 @@ function Write-Warn2 { param([string]$m) Write-Host "[!]  $m" -ForegroundColor Y
 function Write-ErrLine { param([string]$m) Write-Host "[X]  $m" -ForegroundColor Red }
 function Die { param([string]$m) Write-ErrLine $m; exit 1 }
 
-# Dot-source a sibling module if it exists. Returns $true when loaded.
+# Resolve a sibling module's path if it exists, else $null.
 # (Modules are robust standalone and define their own T() fallback, so a missing
 #  one is only fatal when the builder actually needs its functions - we check
 #  the concrete function names later and Die with a precise message then.)
-function Import-Shared {
+#
+# NOTE: the actual dot-source MUST happen at the script's top level (not inside a
+# helper function). Dot-sourcing with `. $p` *inside* a function injects the
+# module's functions into that function's LOCAL scope, so they vanish the moment
+# the helper returns - they would NOT be visible to the rest of the builder. So
+# this returns the path and the caller does `. $path` at script scope.
+function Resolve-Shared {
     param([Parameter(Mandatory)][string]$File)
     $p = Join-Path $SharedDir $File
-    if (-not (Test-Path -LiteralPath $p)) { return $false }
-    . $p          # dot-source into script scope so its functions are visible here
-    return $true
+    if (-not (Test-Path -LiteralPath $p)) { return $null }
+    return $p
 }
 
 # ==============================================================================
@@ -103,7 +108,9 @@ function Import-Shared {
 #      installs T()/Set-Lang ONLY if i18n.ps1 didn't already provide them. This
 #      keeps the builder first-class and runnable standalone (CONTRACTS.md sec 9).
 # ==============================================================================
-$i18nLoaded = Import-Shared 'i18n.ps1'
+$i18nPath = Resolve-Shared 'i18n.ps1'
+$i18nLoaded = [bool]$i18nPath
+if ($i18nPath) { . $i18nPath }   # dot-source at script scope (functions stay visible)
 
 if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
     -not (Get-Command -Name 'Set-Lang' -ErrorAction SilentlyContinue)) {
@@ -376,9 +383,17 @@ Write-Host (T 'welcome_sub') -ForegroundColor DarkGray
 
 # Bring in the rest of the shared toolkit (they also define local T() fallbacks,
 # but ours is already in scope, so they reuse it).
-$usbLoaded = Import-Shared 'usb.ps1'
-$cryptoLoaded = Import-Shared 'crypto.ps1'
-$happLoaded = Import-Shared 'happ.ps1'
+$usbPath = Resolve-Shared 'usb.ps1'
+$usbLoaded = [bool]$usbPath
+if ($usbPath) { . $usbPath }          # dot-source at script scope
+
+$cryptoPath = Resolve-Shared 'crypto.ps1'
+$cryptoLoaded = [bool]$cryptoPath
+if ($cryptoPath) { . $cryptoPath }    # dot-source at script scope
+
+$happPath = Resolve-Shared 'happ.ps1'
+$happLoaded = [bool]$happPath
+if ($happPath) { . $happPath }        # dot-source at script scope
 
 # Verify the cross-module interface up front (fail fast with a precise message
 # rather than half-formatting a stick and dying later on a missing function).
@@ -477,8 +492,14 @@ Write-Host ((T 'dl_version') -f $ver) -ForegroundColor DarkGray
 
 # 3b. /<ver>/manifest.json -> platform entry
 $manifest = Get-Text "$ManifestHost/$ver/manifest.json"
-if (-not $manifest.platforms.$plat) { Die ((T 'dl_noplat') -f $plat, $ver) }
-$entry = $manifest.platforms.$plat
+# StrictMode-safe presence test: accessing an absent property (e.g. the platform
+# key missing from the manifest) throws under Set-StrictMode -Version Latest, so
+# probe the property names rather than reading the value to test for it.
+$platforms = if ($manifest.PSObject.Properties.Name -contains 'platforms') { $manifest.platforms } else { $null }
+if (-not $platforms -or -not ($platforms.PSObject.Properties.Name -contains $plat)) {
+    Die ((T 'dl_noplat') -f $plat, $ver)
+}
+$entry = $platforms.$plat
 $binName = $entry.binary           # "claude.exe"
 $wantSum = ($entry.checksum).ToLower()
 $wantSize = $entry.size
@@ -551,7 +572,10 @@ function Read-TokenPaste {
 
 # host_runnable: this is a Windows host producing a win32 target, so the binary
 # runs here as long as it was actually downloaded.
-$isWin = if ($null -ne $IsWindows) { $IsWindows } else { $true }
+# StrictMode-safe: $IsWindows is an automatic var on PS 6+ but is UNSET on Windows
+# PowerShell 5.1 (the primary target), where reading it throws under StrictMode -
+# so probe via Get-Variable; absence means PS 5.1 == Windows == runnable.
+$isWin = if (Get-Variable -Name IsWindows -Scope Global -ErrorAction SilentlyContinue) { $IsWindows } else { $true }
 $hostRunnable = $isWin -and (Test-Path -LiteralPath $binDst)
 
 # Print the menu and read the (non-sensitive) choice. Default to [2] when we can

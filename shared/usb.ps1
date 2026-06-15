@@ -29,7 +29,9 @@
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
 # --- Volume label (single source of truth, matches produced artifact) ------
-if (-not $script:UsbLabel) { $script:UsbLabel = 'CLAUDE' }
+# StrictMode-safe: reading a never-set $script:UsbLabel throws under
+# Set-StrictMode -Version Latest, so probe for existence via Get-Variable first.
+if (-not (Get-Variable -Scope Script -Name UsbLabel -ErrorAction SilentlyContinue)) { $script:UsbLabel = 'CLAUDE' }
 
 # --- i18n shim --------------------------------------------------------------
 # Prefer the real project accessor from shared/i18n.ps1. If T is absent (this

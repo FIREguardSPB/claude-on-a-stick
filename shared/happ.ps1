@@ -41,7 +41,13 @@ function Get-HappLatestTag {
   } catch {
     throw (T 'happ_api_fail')
   }
-  if (-not $rel.tag_name) { throw (T 'happ_api_fail') }
+  # StrictMode-safe: reading an absent .tag_name throws under
+  # Set-StrictMode -Version Latest, so confirm the property exists first
+  # (otherwise a malformed API reply surfaces as an ugly .NET error instead
+  # of the intended happ_api_fail message).
+  if (-not ($rel.PSObject.Properties.Name -contains 'tag_name') -or -not $rel.tag_name) {
+    throw (T 'happ_api_fail')
+  }
   return [string]$rel.tag_name
 }
 
@@ -114,14 +120,16 @@ function Install-HappPortable {
     $wine = Get-Command wine -ErrorAction SilentlyContinue
     if (-not $wine) { throw 'wine not found (needed to build a Windows Happ from Linux)' }
     $winePath = 'Z:' + ($dstFull -replace '/', '\')   # /a/b -> Z:\a\b
-    $args = @($Setup) + $innoArgs + @("/DIR=$winePath")
+    # Use a dedicated name, NOT the automatic $args variable (which has special
+    # @args splatting semantics and is a StrictMode footgun if shadowed).
+    $wineArgs = @($Setup) + $innoArgs + @("/DIR=$winePath")
     Write-HappInfo (T 'happ_installing')
-    & $wine.Source @args | Out-Null
+    & $wine.Source @wineArgs | Out-Null
   } else {
-    $args = $innoArgs + @("/DIR=$dstFull")
+    $setupArgs = $innoArgs + @("/DIR=$dstFull")
     Write-HappInfo (T 'happ_installing')
     # Wait for the silent installer to finish before we inspect the directory.
-    $p = Start-Process -FilePath $Setup -ArgumentList $args -PassThru -Wait -WindowStyle Hidden
+    $p = Start-Process -FilePath $Setup -ArgumentList $setupArgs -PassThru -Wait -WindowStyle Hidden
     if ($p.ExitCode -ne 0) {
       Write-HappWarn ("{0} (exit {1})" -f (T 'happ_install_warn'), $p.ExitCode)
     }

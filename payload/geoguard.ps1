@@ -89,7 +89,11 @@ function Get-ExitCountry {
     # 3) api.country.is -> JSON { "ip":..., "country":"XX" }
     try {
         $j = Invoke-RestMethod -Uri 'https://api.country.is' @common
-        if ($j.country -match '^[A-Za-z]{2}$') { return ([string]$j.country).ToUpperInvariant() }
+        # StrictMode-safe: reading an absent .country property throws under
+        # Set-StrictMode -Version Latest, so confirm the property exists first.
+        if (($j.PSObject.Properties.Name -contains 'country') -and ($j.country -match '^[A-Za-z]{2}$')) {
+            return ([string]$j.country).ToUpperInvariant()
+        }
     } catch {}
 
     return $null

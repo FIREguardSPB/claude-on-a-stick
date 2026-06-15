@@ -33,7 +33,9 @@ try {
 }
 
 # $script:Lang - active language, 'en' or 'ru'. Default decided in Invoke-PickLanguage.
-if (-not $script:Lang) { $script:Lang = 'en' }
+# StrictMode-safe: reading a never-set $script:Lang throws under
+# Set-StrictMode -Version Latest, so probe for existence via Get-Variable first.
+if (-not (Get-Variable -Scope Script -Name Lang -ErrorAction SilentlyContinue)) { $script:Lang = 'en' }
 
 # -----------------------------------------------------------------------------
 # Nested message map: $Msg[lang][key]
