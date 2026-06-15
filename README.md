@@ -1,10 +1,10 @@
 # claude-on-a-stick
 
-**Carry the *real* Claude Code on a USB stick — your own subscription, no install, no trace left behind.**
+**Carry the *real* Claude Code on a USB stick - your own subscription, no install, no trace left behind.**
 
 `claude-on-a-stick` is an interactive **builder** that turns a USB stick into a
 portable Claude Code environment. Plug it into almost any Windows, Linux, or
-macOS machine, run one launcher, type your stick password — and you are inside a
+macOS machine, run one launcher, type your stick password - and you are inside a
 genuine `claude` session running on **your own subscription token**. Nothing is
 installed on the host, and nothing is left behind when you unplug.
 
@@ -18,14 +18,14 @@ installed on the host, and nothing is left behind when you unplug.
   downloads the official, self-contained `claude` binary from Anthropic's release
   channel at build time and places it on the stick.
 - **Your own subscription.** Authentication uses a long-lived, inference-only
-  token you mint yourself with `claude setup-token`. The builder encrypts it at
+  token (currently valid for 1 year) you mint yourself with `claude setup-token`. The builder encrypts it at
   rest with **your password** (AES-256). It is never committed, never uploaded.
 - **No install, no trace.** The stick carries its own config dir, temp dir, and
   working `projects/` folder. `CLAUDE_CONFIG_DIR` and `HOME`/`TMP` are redirected
   onto the stick, so the host machine's profile is untouched.
 - **An anti-ban geo-guard.** Before launching, the stick checks your exit
   country. If you are in a region where running Claude could risk your account,
-  it refuses to launch (or routes you through a bundled VPN first — see below).
+  it refuses to launch (or routes you through a bundled VPN first - see below).
 - **An optional, bundled VPN.** You can fold a portable copy of the
   [Happ](https://github.com/Happ-proxy/happ-desktop) proxy client onto the stick
   and import *your own* subscription, so the geo-guard has something to fall back
@@ -57,7 +57,7 @@ You received (or built) a stick labelled `CLAUDE`. Plug it in and:
 
 ### Windows
 1. Open the stick in Explorer.
-2. Double-click **`START.bat`** (it runs as your normal user — no admin needed).
+2. Double-click **`START.bat`** (it runs as your normal user - no admin needed).
 3. Enter your **stick password** when prompted.
 4. Claude Code opens in a console, working out of the stick's `projects/` folder.
 
@@ -79,7 +79,7 @@ You may have to clear quarantine on the bundled binaries the first time:
 script prints.
 
 ### When something is off
-Run **`DIAG.bat`** / **`diag.sh`** on the stick — it reports the detected exit
+Run **`DIAG.bat`** / **`diag.sh`** on the stick - it reports the detected exit
 country, whether the VPN/proxy is up, the config paths in use, and whether the
 token decrypts. Start there before filing an issue.
 
@@ -136,7 +136,7 @@ Result: a self-contained `CLAUDE` stick you can hand to any supported machine.
 ## Security model (please understand this)
 
 `claude-on-a-stick` encrypts **the auth token only**. Here is the precise threat
-model — and its sharp edge:
+model - and its sharp edge:
 
 - **Token at rest is AES-256 encrypted with your password.** The on-disk format
   is `salt(16) || iv(16) || AES-256-CBC(PKCS7) ciphertext`, key derived with
@@ -161,7 +161,7 @@ model — and its sharp edge:
 
 - **No third-party binaries are redistributed in this repository.** The Claude
   Code binary is downloaded from Anthropic's official release host, and the Happ
-  client from its official GitHub releases — **at build time, onto your stick.**
+  client from its official GitHub releases - **at build time, onto your stick.**
   This repo contains only build logic, launcher templates, and docs.
 - **The subscription is yours.** The auth token is minted by *you* with
   `claude setup-token` against *your own* Anthropic subscription. No tokens are
@@ -177,7 +177,7 @@ model — and its sharp edge:
 
 ## Documentation
 
-- **[README.ru.md](README.ru.md)** — этот README на русском.
-- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** — how the pieces fit together.
-- **[docs/SECURITY.md](docs/SECURITY.md)** — full threat model and PII guidance.
-- **[CONTRACTS.md](CONTRACTS.md)** — the binding build specification (for contributors).
+- **[README.ru.md](README.ru.md)** - этот README на русском.
+- **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)** - how the pieces fit together.
+- **[docs/SECURITY.md](docs/SECURITY.md)** - full threat model and PII guidance.
+- **[CONTRACTS.md](CONTRACTS.md)** - the binding build specification (for contributors).
