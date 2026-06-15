@@ -1,9 +1,9 @@
 # ---------------------------------------------------------------------------
-# claude-on-a-stick — .gitignore
+# claude-on-a-stick - .gitignore
 #
 # This repo ships ONLY logic (builders, launcher templates, docs). Everything
-# downloaded or entered at BUILD time — the Claude binary, the Happ VPN, the
-# user's auth token and their subscription link — lands on the USB stick and
+# downloaded or entered at BUILD time - the Claude binary, the Happ VPN, the
+# user's auth token and their subscription link - lands on the USB stick and
 # MUST NEVER be committed. See CONTRACTS.md §11.
 # ---------------------------------------------------------------------------
 
@@ -11,7 +11,7 @@
 *.exe
 claude
 bin/
-# (allow nothing under bin/ — it is produced by the builder on the stick)
+# (allow nothing under bin/ - it is produced by the builder on the stick)
 
 # --- Bundled apps (Happ VPN payload, run wrappers, extracted installers) ---
 apps/

@@ -142,7 +142,7 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
             token_login_hint     = 'A browser window will open for the OAuth login; paste the code back if asked.'
             token_choice_prompt  = 'How do you want to provide your Claude token?'
             token_choice_paste   = '  [1] Paste an existing token (you already have an sk-ant-oat… token)'
-            token_choice_new     = "  [2] Get a new one now — opens your browser via 'claude setup-token'"
+            token_choice_new     = "  [2] Get a new one now - opens your browser via 'claude setup-token'"
             token_choice_ask     = 'Choice [1/2]'
             token_running        = 'Running: claude setup-token (config redirected onto the stick) ...'
             token_cmd_failed     = 'claude setup-token exited with code {0}.'
@@ -251,7 +251,7 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
             token_login_hint     = 'Откроется окно браузера для входа OAuth; при запросе вставьте код обратно.'
             token_choice_prompt  = 'Как передать токен Claude?'
             token_choice_paste   = '  [1] Вставить готовый токен (у вас уже есть sk-ant-oat…)'
-            token_choice_new     = "  [2] Получить новый сейчас — откроется браузер ('claude setup-token')"
+            token_choice_new     = "  [2] Получить новый сейчас - откроется браузер ('claude setup-token')"
             token_choice_ask     = 'Выбор [1/2]'
             token_running        = 'Выполняется: claude setup-token (конфиг перенаправлен на флешку) ...'
             token_cmd_failed     = 'claude setup-token завершился с кодом {0}.'

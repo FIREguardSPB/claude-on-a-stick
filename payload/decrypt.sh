@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# payload/decrypt.sh — STICK-SIDE token decryptor (Linux solid, macOS best-effort).
+# payload/decrypt.sh - STICK-SIDE token decryptor (Linux solid, macOS best-effort).
 #
 # Copied verbatim onto the stick by the builder. Invoked by env.sh:
 #     CLAUDE_CODE_OAUTH_TOKEN="$("$STICK/decrypt.sh" "$STICK/config/oauth.enc")" || exit 1
@@ -14,9 +14,9 @@
 #   * Exit code 1 on any failure (missing file, no backend, wrong password / bad padding).
 #
 # Key derivation backends, tried in this order (first that works wins):
-#   1. openssl 3  `openssl kdf ... PBKDF2`     — Linux (LibreSSL has NO kdf subcommand)
-#   2. perl Digest::SHA PBKDF2-HMAC-SHA1       — macOS LibreSSL fallback (VERIFIED identical)
-#   3. python3 hashlib.pbkdf2_hmac            — universal last resort
+#   1. openssl 3  `openssl kdf ... PBKDF2`     - Linux (LibreSSL has NO kdf subcommand)
+#   2. perl Digest::SHA PBKDF2-HMAC-SHA1       - macOS LibreSSL fallback (VERIFIED identical)
+#   3. python3 hashlib.pbkdf2_hmac            - universal last resort
 # salt/iv are read WITHOUT xxd (macOS lacks xxd) using head -c / dd / tail -c + od.
 
 set -u

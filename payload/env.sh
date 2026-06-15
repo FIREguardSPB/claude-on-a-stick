@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# env.sh — environment protocol for claude-on-a-stick (POSIX side).
+# env.sh - environment protocol for claude-on-a-stick (POSIX side).
 # Mirrors env.bat EXACTLY (same variable names, same order). See CONTRACTS.md §3.
 #
 # This script is *sourced* (not executed) by start.sh AFTER vpnup + geoguard have
@@ -11,7 +11,7 @@
 #   - unlock the encrypted OAuth token (via decrypt.sh) into memory only.
 #
 # The decrypted token lives ONLY in this shell's environment
-# (CLAUDE_CODE_OAUTH_TOKEN) — it is never written to disk.
+# (CLAUDE_CODE_OAUTH_TOKEN) - it is never written to disk.
 #
 # Requires STICK to be exported by the caller (start.sh sets it).
 set -eu
@@ -64,14 +64,14 @@ elif [ -f "$__OAUTH_TXT" ]; then
   # Plaintext fallback: first non-empty line, verbatim (no newline carried over).
   CLAUDE_CODE_OAUTH_TOKEN="$(grep -m1 . "$__OAUTH_TXT" 2>/dev/null | tr -d '\r\n')"
 else
-  printf '%s\n' "$(t err no_token 'No token found: neither config/oauth.enc nor config/oauth.txt exists — was the stick built correctly?')" >&2
+  printf '%s\n' "$(t err no_token 'No token found: neither config/oauth.enc nor config/oauth.txt exists - was the stick built correctly?')" >&2
   return 1 2>/dev/null || exit 1
 fi
 export CLAUDE_CODE_OAUTH_TOKEN
 if [ -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]; then
-  printf '%s\n' "$(t err decrypt_empty 'Token is empty — aborting.')" >&2
+  printf '%s\n' "$(t err decrypt_empty 'Token is empty - aborting.')" >&2
   return 1 2>/dev/null || exit 1
 fi
 
 # Note: proxy variables (HTTPS_PROXY / HTTP_PROXY / ALL_PROXY / NO_PROXY) are NOT
-# set here — vpnup.sh exports them when a VPN is active, before this is sourced.
+# set here - vpnup.sh exports them when a VPN is active, before this is sourced.

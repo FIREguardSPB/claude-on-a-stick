@@ -1,11 +1,11 @@
-﻿# shared/crypto.ps1 — encrypt/decrypt helpers for claude-on-a-stick (Windows builder side)
+﻿# shared/crypto.ps1 - encrypt/decrypt helpers for claude-on-a-stick (Windows builder side)
 #
 # Dot-sourced by builders/windows/build.ps1. Provides the ENCRYPT side used at build time
 # (write config\oauth.enc) plus a Decrypt wrapper that mirrors payload\decrypt.ps1 so the
 # builder can self-test the round-trip before declaring success.
 #
 # IMPORTANT: this file MUST be saved as UTF-8 WITH BOM so Windows PowerShell 5.1 reads it
-# correctly (matches the i18n contract). It is pure .NET — no openssl dependency on Windows.
+# correctly (matches the i18n contract). It is pure .NET - no openssl dependency on Windows.
 #
 # On-disk format (VERIFIED interoperable with openssl 3 / LibreSSL+perl / python):
 #     oauth.enc = salt[16] || iv[16] || AES-256-CBC(PKCS7) ciphertext
@@ -19,7 +19,7 @@ Set-StrictMode -Version Latest
 # ---------------------------------------------------------------------------
 # New-CasKey [string]$Password [byte[]]$Salt  ->  [byte[]] 32-byte key
 # 3-arg Rfc2898DeriveBytes ctor == PBKDF2-HMAC-SHA1. Do NOT switch to the 4-arg
-# (HashAlgorithmName) overload with SHA256 — that would break interop with openssl/python.
+# (HashAlgorithmName) overload with SHA256 - that would break interop with openssl/python.
 # ---------------------------------------------------------------------------
 function New-CasKey {
   param(

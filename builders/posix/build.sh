@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =============================================================================
-# claude-on-a-stick — POSIX interactive builder
+# claude-on-a-stick - POSIX interactive builder
 #   Linux  = solid / verified
 #   macOS  = best-effort / guided (no Mac to verify; prints an experimental notice)
 #
@@ -72,7 +72,7 @@ maybe_reexec_bash4() {
 		if [ -z "$cand" ] || [ ! -x "$cand" ]; then continue; fi
 		# Probe its major version without trusting BASH_VERSINFO of a child.
 		local maj
-		# NB: single quotes are intentional — $BASH_VERSINFO must expand inside
+		# NB: single quotes are intentional - $BASH_VERSINFO must expand inside
 		# the *child* bash ($cand), not in this (possibly bash 3.2) parent.
 		# shellcheck disable=SC2016
 		maj=$("$cand" -c 'echo "${BASH_VERSINFO:-0}"' 2>/dev/null || echo 0)
@@ -81,7 +81,7 @@ maybe_reexec_bash4() {
 			exec "$cand" "$0" "$@"
 		fi
 	done
-	# No bash 4 found — continue; i18n.sh's case fallback must carry us.
+	# No bash 4 found - continue; i18n.sh's case fallback must carry us.
 	return 0
 }
 maybe_reexec_bash4 "$@"
@@ -98,7 +98,7 @@ _die_raw() { printf 'FATAL: %s\n' "$*" >&2; exit 1; }
 #    Required: i18n.sh (everything talks through t()).
 # -----------------------------------------------------------------------------
 if [ ! -f "$SHARED_DIR/i18n.sh" ]; then
-	_die_raw "shared/i18n.sh not found at $SHARED_DIR/i18n.sh — cannot continue."
+	_die_raw "shared/i18n.sh not found at $SHARED_DIR/i18n.sh - cannot continue."
 fi
 # shellcheck source=/dev/null
 . "$SHARED_DIR/i18n.sh"
@@ -109,7 +109,7 @@ if ! command -v t >/dev/null 2>&1; then
 	t() { printf '%s' "$*"; }
 fi
 
-# Optional helpers — present in a complete checkout, may be stubbed in dev.
+# Optional helpers - present in a complete checkout, may be stubbed in dev.
 HAVE_USB=0 HAVE_CRYPTO=0 HAVE_HAPP=0
 if [ -f "$SHARED_DIR/usb.sh" ]; then
 	# shellcheck source=/dev/null
@@ -237,7 +237,7 @@ trap cleanup EXIT INT TERM
 # ---- Banner --------------------------------------------------------------
 print_banner() {
 	hr
-	say "${C_BOLD}claude-on-a-stick${C_RESET}  —  $(t banner_tagline)"
+	say "${C_BOLD}claude-on-a-stick${C_RESET}  -  $(t banner_tagline)"
 	hr
 }
 
@@ -251,7 +251,7 @@ print_macos_notice() {
 }
 
 # -----------------------------------------------------------------------------
-# STEP A — language FIRST (CONTRACTS §9). i18n.sh picks a default from $LANG;
+# STEP A - language FIRST (CONTRACTS §9). i18n.sh picks a default from $LANG;
 # we let the user override with a single keypress.
 # -----------------------------------------------------------------------------
 choose_language() {
@@ -281,7 +281,7 @@ choose_language() {
 }
 
 # -----------------------------------------------------------------------------
-# STEP B — release channel / target platform (CONTRACTS §8, §13)
+# STEP B - release channel / target platform (CONTRACTS §8, §13)
 # Channel default: stable. Target platform: auto-detected, user-confirmable.
 # -----------------------------------------------------------------------------
 CHANNEL="stable"
@@ -331,7 +331,7 @@ choose_channel_and_target() {
 }
 
 # -----------------------------------------------------------------------------
-# STEP C — model selection (baked into the launcher as --model; default opus)
+# STEP C - model selection (baked into the launcher as --model; default opus)
 # -----------------------------------------------------------------------------
 MODEL="claude-opus-4-8"
 choose_model() {
@@ -345,7 +345,7 @@ choose_model() {
 }
 
 # -----------------------------------------------------------------------------
-# STEP D — pick + confirm + format the USB stick (CONTRACTS §10)
+# STEP D - pick + confirm + format the USB stick (CONTRACTS §10)
 # Delegates the dangerous parts to shared/usb.sh, which:
 #   - enumerates removable disks (lsblk TYPE=disk AND TRAN=usb / diskutil external)
 #   - never offers internal disks; user picks explicitly (no auto-pick)
@@ -391,7 +391,7 @@ select_and_format_usb() {
 }
 
 # -----------------------------------------------------------------------------
-# STEP E — scaffold the stick directory layout (CONTRACTS §2)
+# STEP E - scaffold the stick directory layout (CONTRACTS §2)
 # -----------------------------------------------------------------------------
 scaffold_stick() {
 	step "$(t step_scaffold)"
@@ -405,7 +405,7 @@ scaffold_stick() {
 }
 
 # -----------------------------------------------------------------------------
-# STEP F — download + sha256-verify the Claude binary (CONTRACTS §8)  [VERIFIED]
+# STEP F - download + sha256-verify the Claude binary (CONTRACTS §8)  [VERIFIED]
 #   GET /<channel> -> bare semver
 #   GET /<ver>/manifest.json -> platforms.<plat>.{binary,checksum,size}
 #   optional GPG verify of manifest.json.sig when gpg present (best-effort)
@@ -461,7 +461,7 @@ download_claude() {
 	info "$(t downloading_binary) ($size bytes)"
 	http_dl "$bin_url" "$bin_tmp" || die "$(t err_download_binary)"
 
-	# 5) sha256 verify — ABORT on mismatch
+	# 5) sha256 verify - ABORT on mismatch
 	info "$(t verifying_sha)"
 	local got; got=$(sha256_of "$bin_tmp")
 	if [ "$got" != "$checksum" ]; then
@@ -485,8 +485,8 @@ download_claude() {
 }
 
 # -----------------------------------------------------------------------------
-# STEP G — auth token: run `claude setup-token`, encrypt to config/oauth.enc
-# (CONTRACTS §4) — long-lived inference-only token; AES at rest.
+# STEP G - auth token: run `claude setup-token`, encrypt to config/oauth.enc
+# (CONTRACTS §4) - long-lived inference-only token; AES at rest.
 # -----------------------------------------------------------------------------
 setup_and_encrypt_token() {
 	step "$(t step_token)"
@@ -559,7 +559,7 @@ setup_and_encrypt_token() {
 	done
 
 	# Encrypt -> config/oauth.enc using shared/crypto.sh (salt|iv|ct, PBKDF2-
-	# HMAC-SHA1 300k, AES-256-CBC PKCS7) — CONTRACTS §4. Token flows via stdin so
+	# HMAC-SHA1 300k, AES-256-CBC PKCS7) - CONTRACTS §4. Token flows via stdin so
 	# it never lands in argv / process list.
 	local enc_out="$STICK/config/oauth.enc"
 	if [ "$HAVE_CRYPTO" = "1" ] && command -v cas_encrypt >/dev/null 2>&1; then
@@ -570,7 +570,7 @@ setup_and_encrypt_token() {
 		die "$(t err_no_crypto_helper)"
 	fi
 
-	# Lock down perms (token at rest, even if encrypted) — POSIX stick targets.
+	# Lock down perms (token at rest, even if encrypted) - POSIX stick targets.
 	chmod 600 "$enc_out" 2>/dev/null || true
 
 	# Scrub the plaintext token from this shell's memory.
@@ -582,8 +582,8 @@ setup_and_encrypt_token() {
 }
 
 # -----------------------------------------------------------------------------
-# STEP H — optional Happ VPN bundle + subscription deep-link insert
-# (CONTRACTS §6, §7) — proxy mode only, never TUN. Best-effort sub insert.
+# STEP H - optional Happ VPN bundle + subscription deep-link insert
+# (CONTRACTS §6, §7) - proxy mode only, never TUN. Best-effort sub insert.
 # -----------------------------------------------------------------------------
 maybe_bundle_happ() {
 	step "$(t step_happ)"
@@ -653,9 +653,9 @@ maybe_bundle_happ() {
 }
 
 # -----------------------------------------------------------------------------
-# STEP I — geo-guard: smart-skip suggestion + write geoguard.conf (CONTRACTS §5)
+# STEP I - geo-guard: smart-skip suggestion + write geoguard.conf (CONTRACTS §5)
 # We detect the *current* exit country (direct, no proxy) and, if it is NOT in
-# the blocklist, suggest disabling the guard (GUARD_ENABLED=0) — that is the
+# the blocklist, suggest disabling the guard (GUARD_ENABLED=0) - that is the
 # user's whole point: don't touch the VPN in an unrestricted region.
 # -----------------------------------------------------------------------------
 GUARD_ENABLED=1
@@ -697,7 +697,7 @@ write_geoguard() {
 				GUARD_ENABLED=1
 				;;
 			*)
-				# Unrestricted region — suggest the smart skip.
+				# Unrestricted region - suggest the smart skip.
 				if confirm "$(t ask_smart_skip)" y; then
 					GUARD_ENABLED=0
 					ok "$(t guard_disabled_smart)"
@@ -723,7 +723,7 @@ write_geoguard() {
 
 	# Write geoguard.conf onto the stick (consumed by geoguard.sh / .ps1).
 	cat > "$STICK/geoguard.conf" <<EOF
-# geoguard.conf — anti-ban exit-country guard (CONTRACTS §5)
+# geoguard.conf - anti-ban exit-country guard (CONTRACTS §5)
 # GUARD_ENABLED=0 -> return OK immediately (unrestricted region; smart-skip).
 GUARD_ENABLED=$GUARD_ENABLED
 # Comma-separated ISO country codes that must NOT be the exit country.
@@ -735,7 +735,7 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
-# STEP J — copy payload launchers, templating MODEL + language (CONTRACTS §3)
+# STEP J - copy payload launchers, templating MODEL + language (CONTRACTS §3)
 # We only copy the launchers relevant to the target OS family, plus the shared
 # geoguard.conf is already written. Templating replaces:
 #   __MODEL__  -> chosen model
@@ -784,7 +784,7 @@ copy_payload() {
 }
 
 # -----------------------------------------------------------------------------
-# STEP K — final self-test (CONTRACTS §3 launcher chain sanity)
+# STEP K - final self-test (CONTRACTS §3 launcher chain sanity)
 # Non-destructive checks that the produced stick is internally consistent.
 # -----------------------------------------------------------------------------
 self_test() {
@@ -875,7 +875,7 @@ print_summary() {
 	if [ -d "$STICK/apps/happ" ]; then
 		say "  $(t summary_vpn):      apps/happ ($(t bundled))"
 	else
-		say "  $(t summary_vpn):      —"
+		say "  $(t summary_vpn):      -"
 	fi
 	say ""
 	case "$PLAT" in
@@ -888,18 +888,18 @@ print_summary() {
 # =============================================================================
 main() {
 	print_banner
-	choose_language          # STEP A — language FIRST
+	choose_language          # STEP A - language FIRST
 	print_macos_notice        # macOS experimental notice (after language)
-	choose_channel_and_target # STEP B — channel + target platform
-	choose_model             # STEP C — model baked into launcher
-	select_and_format_usb    # STEP D — pick + confirm + format USB (DANGEROUS)
-	scaffold_stick           # STEP E — stick layout
-	download_claude          # STEP F — download + sha256-verify Claude
-	setup_and_encrypt_token  # STEP G — setup-token + AES -> oauth.enc
-	maybe_bundle_happ        # STEP H — optional Happ VPN + sub deep-link
-	write_geoguard           # STEP I — geo smart-skip + geoguard.conf
-	copy_payload             # STEP J — payload launchers (templated)
-	self_test                # STEP K — final self-test
+	choose_channel_and_target # STEP B - channel + target platform
+	choose_model             # STEP C - model baked into launcher
+	select_and_format_usb    # STEP D - pick + confirm + format USB (DANGEROUS)
+	scaffold_stick           # STEP E - stick layout
+	download_claude          # STEP F - download + sha256-verify Claude
+	setup_and_encrypt_token  # STEP G - setup-token + AES -> oauth.enc
+	maybe_bundle_happ        # STEP H - optional Happ VPN + sub deep-link
+	write_geoguard           # STEP I - geo smart-skip + geoguard.conf
+	copy_payload             # STEP J - payload launchers (templated)
+	self_test                # STEP K - final self-test
 	print_summary
 }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# diag.sh — non-destructive health check for claude-on-a-stick (POSIX side).
+# diag.sh - non-destructive health check for claude-on-a-stick (POSIX side).
 # Mirrors DIAG.bat. Does NOT launch Claude and does NOT prompt for the password.
 #
 # Reports, with PASS/WARN/FAIL markers:
@@ -60,8 +60,8 @@ if command -v openssl >/dev/null 2>&1; then
   if openssl kdf -help >/dev/null 2>&1; then
     ok "openssl kdf available (PBKDF2 path)"
   else
-    warn "no 'openssl kdf' (LibreSSL?) — decrypt.sh uses the perl PBKDF2 fallback"
-    command -v perl >/dev/null 2>&1 && ok "perl available (Digest::SHA fallback)" || fail "perl missing — decrypt fallback unavailable"
+    warn "no 'openssl kdf' (LibreSSL?) - decrypt.sh uses the perl PBKDF2 fallback"
+    command -v perl >/dev/null 2>&1 && ok "perl available (Digest::SHA fallback)" || fail "perl missing - decrypt fallback unavailable"
   fi
 else
   fail "openssl not found (needed to decrypt the token)"
@@ -88,15 +88,15 @@ if command -v curl >/dev/null 2>&1; then
     done
     IFS="$__old_ifs"
     if [ "$__blocked" = "1" ]; then
-      warn "direct exit country: $__cc — BLOCKED (VPN required at launch)"
+      warn "direct exit country: $__cc - BLOCKED (VPN required at launch)"
     else
-      ok "direct exit country: $__cc — not blocked"
+      ok "direct exit country: $__cc - not blocked"
     fi
   else
     warn "could not determine direct exit country (network down?)"
   fi
 else
-  warn "curl missing — skipping geo detection"
+  warn "curl missing - skipping geo detection"
 fi
 printf '\n'
 
@@ -105,7 +105,7 @@ printf '%s\n' "$(t diag sec_vpn '-- Bundled VPN (Happ) --')"
 if [ -d "$STICK/apps/happ" ]; then
   ok "apps/happ present"
   [ -f "$STICK/apps/happ/run-happ.sh" ] && ok "run-happ.sh present" || warn "run-happ.sh missing"
-  # Probe candidate ports WITHOUT launching Happ — just see if one already answers.
+  # Probe candidate ports WITHOUT launching Happ - just see if one already answers.
   if command -v curl >/dev/null 2>&1; then
     __live=""
     for __p in 10808 10809 2080 1080 10800 8080; do
@@ -113,10 +113,10 @@ if [ -d "$STICK/apps/happ" ]; then
         __live="$__p"; break
       fi
     done
-    if [ -n "$__live" ]; then ok "live HTTP proxy detected on port $__live"; else warn "no live proxy now (Happ not connected yet — normal until START runs it)"; fi
+    if [ -n "$__live" ]; then ok "live HTTP proxy detected on port $__live"; else warn "no live proxy now (Happ not connected yet - normal until START runs it)"; fi
   fi
 else
-  warn "apps/happ absent — will rely on host/system VPN (geoguard still governs)"
+  warn "apps/happ absent - will rely on host/system VPN (geoguard still governs)"
 fi
 printf '\n'
 

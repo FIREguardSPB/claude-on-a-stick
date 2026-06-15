@@ -100,7 +100,7 @@ $script:Msg = @{
         # --- setup-token instructions -------------------------------------
         'token_choice_prompt' = 'How do you want to provide your Claude token?'
         'token_choice_paste'  = '  [1] Paste an existing token (you already have an sk-ant-oat… token)'
-        'token_choice_new'    = "  [2] Get a new one now — opens your browser via 'claude setup-token'"
+        'token_choice_new'    = "  [2] Get a new one now - opens your browser via 'claude setup-token'"
         'token_choice_ask'    = 'Choice [1/2]'
         'token.intro'  = 'Now we need YOUR long-lived Claude auth token (inference-only).'
         'token.howto'  = 'In a separate terminal where you are logged in, run:  claude setup-token'
@@ -242,7 +242,7 @@ $script:Msg = @{
         # --- setup-token instructions -------------------------------------
         'token_choice_prompt' = 'Как передать токен Claude?'
         'token_choice_paste'  = '  [1] Вставить готовый токен (у вас уже есть sk-ant-oat…)'
-        'token_choice_new'    = "  [2] Получить новый сейчас — откроется браузер ('claude setup-token')"
+        'token_choice_new'    = "  [2] Получить новый сейчас - откроется браузер ('claude setup-token')"
         'token_choice_ask'    = 'Выбор [1/2]'
         'token.intro'  = 'Теперь нужен ВАШ долгоживущий токен Claude (только для инференса).'
         'token.howto'  = 'В отдельном терминале, где вы авторизованы, выполните:  claude setup-token'

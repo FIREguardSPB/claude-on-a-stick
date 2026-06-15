@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shared/usb.sh — claude-on-a-stick
+# shared/usb.sh - claude-on-a-stick
 # ---------------------------------------------------------------------------
 # Removable-disk enumeration + interactive pick + exFAT format helper.
 #
@@ -50,7 +50,7 @@ if ! declare -F _i18n_subst >/dev/null 2>&1; then
 fi
 
 if ! declare -F t >/dev/null 2>&1; then
-  # Minimal English fallback catalogue — mirrors the usb.*/fmt.* keys from
+  # Minimal English fallback catalogue - mirrors the usb.*/fmt.* keys from
   # shared/i18n.sh so behaviour is identical when sourced standalone.
   t() {
     local key="$1"; shift
@@ -63,7 +63,7 @@ if ! declare -F t >/dev/null 2>&1; then
       usb.choose)         tmpl="Type the number of the target disk (or 'q' to quit): " ;;
       usb.bad_choice)     tmpl="Not a valid choice. Try again." ;;
       usb.is_hdd_warn)    tmpl="Note: a USB HDD also shows as a USB disk. Make ABSOLUTELY sure '{0}' is the stick you want to erase." ;;
-      usb.warn_title)     tmpl="!!! DESTRUCTIVE ACTION — READ CAREFULLY !!!" ;;
+      usb.warn_title)     tmpl="!!! DESTRUCTIVE ACTION - READ CAREFULLY !!!" ;;
       usb.warn_body)      tmpl="ALL data on {0} ({1}, {2}) will be PERMANENTLY ERASED. This cannot be undone." ;;
       usb.erase_prompt)   tmpl="To confirm, type ERASE {0} exactly (anything else cancels): " ;;
       usb.erase_mismatch) tmpl="Confirmation did not match. Nothing was erased." ;;
@@ -111,7 +111,7 @@ _usb_os() {
 #   Emits one line per candidate, TAB-separated:  /dev/sdX <TAB> SIZE <TAB> MODEL
 #   Filter rule (CONTRACTS §10): TYPE==disk AND TRAN==usb. Internal NVMe/SATA
 #   system disks have a non-usb TRAN and can never appear. A USB HDD is also
-#   TRAN=usb, so it IS listed — but the caller forces an explicit human pick.
+#   TRAN=usb, so it IS listed - but the caller forces an explicit human pick.
 usb_enumerate_linux() {
   command -v lsblk >/dev/null 2>&1 || { _usb_emit "lsblk not found (util-linux)"; return 1; }
   # -d: whole disks only, -n: no header, -p: full /dev path, -o: exact columns.
@@ -162,7 +162,7 @@ usb_enumerate() {
 # ===========================================================================
 # usb_select
 #   Lists candidates and makes the user type a NUMBER to pick one (never auto-
-#   picks even with a single candidate — a USB HDD is also TRAN=usb).
+#   picks even with a single candidate - a USB HDD is also TRAN=usb).
 #   On success prints ONLY the chosen "dev<TAB>size<TAB>model" to STDOUT
 #   (UI goes to STDERR) and returns 0;  q/abort/no-disk -> non-zero.
 usb_select() {
@@ -290,7 +290,7 @@ usb_format_linux() {
   else
     parted -s "$dev" mklabel msdos >&2 \
       || { _usb_emit "parted mklabel failed"; return 1; }
-    # parted's "ntfs" fs-type sets the MBR type byte to 0x07 — correct for
+    # parted's "ntfs" fs-type sets the MBR type byte to 0x07 - correct for
     # exFAT too (there is no dedicated exFAT MBR id; 0x07 is the right one).
     parted -s -a optimal "$dev" mkpart primary ntfs 1MiB 100% >&2 \
       || { _usb_emit "parted mkpart failed"; return 1; }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# geoguard.sh — anti-ban geo-guard (POSIX side). Mirrors geoguard.ps1 logic.
+# geoguard.sh - anti-ban geo-guard (POSIX side). Mirrors geoguard.ps1 logic.
 # See CONTRACTS.md §5.
 #
 # Exit codes (consumed by start.sh):
@@ -9,7 +9,7 @@
 # Logic:
 #   0. GUARD_ENABLED=0 -> OK immediately.
 #   1. Detect exit country DIRECT (no proxy).
-#   2. Not in BLOCKLIST -> OK, do NOT touch the VPN (smart skip — the whole point).
+#   2. Not in BLOCKLIST -> OK, do NOT touch the VPN (smart skip - the whole point).
 #   3. Blocked -> bring Happ up (vpnup) and re-check THROUGH the proxy.
 #   4. Still blocked / no VPN -> refuse.
 #   5. Undetermined -> per INCONCLUSIVE (prompt|block|allow).
@@ -98,10 +98,10 @@ if [ -z "$COUNTRY" ]; then
   printf '%s\n' "$(t geo undetermined 'Could not determine your exit country.')" >&2
   case "$INCONCLUSIVE" in
     allow)
-      printf '%s\n' "$(t geo inconclusive_allow 'INCONCLUSIVE=allow — launching anyway.')" >&2
+      printf '%s\n' "$(t geo inconclusive_allow 'INCONCLUSIVE=allow - launching anyway.')" >&2
       exit 0 ;;
     block)
-      printf '%s\n' "$(t geo inconclusive_block 'INCONCLUSIVE=block — refusing to launch.')" >&2
+      printf '%s\n' "$(t geo inconclusive_block 'INCONCLUSIVE=block - refusing to launch.')" >&2
       exit 1 ;;
     *) # prompt
       printf '%s ' "$(t geo prompt_continue 'Continue without geo verification? [y/N]:')" >&2
@@ -115,13 +115,13 @@ fi
 
 # --- step 2: smart skip ------------------------------------------------------
 if ! is_blocked "$COUNTRY"; then
-  printf '%s %s — %s\n' "$(t geo exit_country 'Exit country:')" "$COUNTRY" \
+  printf '%s %s - %s\n' "$(t geo exit_country 'Exit country:')" "$COUNTRY" \
     "$(t geo ok_safe 'not blocked, VPN untouched.')" >&2
   exit 0
 fi
 
 # --- step 3: blocked -> bring up VPN and re-check through the proxy ----------
-printf '%s %s — %s\n' "$(t geo exit_country 'Exit country:')" "$COUNTRY" \
+printf '%s %s - %s\n' "$(t geo exit_country 'Exit country:')" "$COUNTRY" \
   "$(t geo blocked_trying_vpn 'BLOCKED. Bringing up bundled VPN…')" >&2
 
 # vpnup.sh exports HTTPS_PROXY when it succeeds. Source it so the var survives.
@@ -131,19 +131,19 @@ if [ -f "$STICK/vpnup.sh" ]; then
 fi
 
 if [ -z "${HTTPS_PROXY:-}" ]; then
-  printf '%s\n' "$(t geo no_vpn 'No working VPN proxy available — refusing to launch.')" >&2
+  printf '%s\n' "$(t geo no_vpn 'No working VPN proxy available - refusing to launch.')" >&2
   exit 1
 fi
 
 # Re-check exit country THROUGH the proxy. Only the HTTP proxy works here.
 COUNTRY2="$(detect_country "$HTTPS_PROXY")"
 if [ -z "$COUNTRY2" ]; then
-  printf '%s\n' "$(t geo recheck_failed 'VPN proxy did not answer the geo probe — refusing.')" >&2
+  printf '%s\n' "$(t geo recheck_failed 'VPN proxy did not answer the geo probe - refusing.')" >&2
   exit 1
 fi
 
 if is_blocked "$COUNTRY2"; then
-  printf '%s %s — %s\n' "$(t geo vpn_country 'VPN exit country:')" "$COUNTRY2" \
+  printf '%s %s - %s\n' "$(t geo vpn_country 'VPN exit country:')" "$COUNTRY2" \
     "$(t geo still_blocked 'still blocked. Refusing to launch.')" >&2
   exit 1
 fi
@@ -152,6 +152,6 @@ fi
 # Record that the VPN was raised so start.sh re-establishes the proxy vars in
 # its own shell (a sourced geoguard ran in a subshell, so its exports are lost).
 printf '%s' "$HTTPS_PROXY" > "$__VPN_MARK" 2>/dev/null || true
-printf '%s %s — %s\n' "$(t geo vpn_country 'VPN exit country:')" "$COUNTRY2" \
+printf '%s %s - %s\n' "$(t geo vpn_country 'VPN exit country:')" "$COUNTRY2" \
   "$(t geo vpn_ok 'safe via VPN. Proceeding.')" >&2
 exit 0

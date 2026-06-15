@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vpnup.sh — bring up the bundled Happ VPN in proxy mode (POSIX side).
+# vpnup.sh - bring up the bundled Happ VPN in proxy mode (POSIX side).
 # Mirrors vpnup.bat. See CONTRACTS.md §3 (env) and §6 (VPN bring-up).
 #
 # Designed to be SOURCED (so the exported proxy vars survive into the caller),
@@ -15,7 +15,7 @@
 # Exports on success:
 #   HTTPS_PROXY=http://127.0.0.1:<port>
 #   HTTP_PROXY=http://127.0.0.1:<port>
-#   ALL_PROXY=socks5://127.0.0.1:<port>   (only if that port also speaks SOCKS — best-effort)
+#   ALL_PROXY=socks5://127.0.0.1:<port>   (only if that port also speaks SOCKS - best-effort)
 #   NO_PROXY=localhost,127.0.0.1,::1
 set -eu
 
@@ -33,7 +33,7 @@ __HAPP_DIR="$STICK/apps/happ"
 
 # --- no bundled VPN -> nothing to do -----------------------------------------
 if [ ! -d "$__HAPP_DIR" ]; then
-  printf '%s\n' "$(t vpn none 'No bundled VPN (apps/happ absent) — using host network.')" >&2
+  printf '%s\n' "$(t vpn none 'No bundled VPN (apps/happ absent) - using host network.')" >&2
   return 0 2>/dev/null || exit 0
 fi
 
@@ -42,10 +42,10 @@ fi
 # host profile. It backgrounds Happ and returns.
 if [ -x "$STICK/apps/happ/run-happ.sh" ] || [ -f "$STICK/apps/happ/run-happ.sh" ]; then
   printf '%s\n' "$(t vpn launching 'Launching bundled Happ (proxy mode)…')" >&2
-  # Start it; ignore failure here — we verify by probing the proxy below.
+  # Start it; ignore failure here - we verify by probing the proxy below.
   bash "$STICK/apps/happ/run-happ.sh" >/dev/null 2>&1 || true
 else
-  printf '%s\n' "$(t vpn no_wrapper 'apps/happ/run-happ.sh missing — cannot launch Happ.')" >&2
+  printf '%s\n' "$(t vpn no_wrapper 'apps/happ/run-happ.sh missing - cannot launch Happ.')" >&2
 fi
 
 # --- auto-detect the live HTTP proxy port ------------------------------------
@@ -85,7 +85,7 @@ export HTTPS_PROXY="http://127.0.0.1:$__FOUND_PORT"
 export HTTP_PROXY="http://127.0.0.1:$__FOUND_PORT"
 export NO_PROXY="localhost,127.0.0.1,::1"
 
-# ALL_PROXY (SOCKS) only if the same port also answers SOCKS5 — best-effort.
+# ALL_PROXY (SOCKS) only if the same port also answers SOCKS5 - best-effort.
 if curl -fsS --max-time 3 --proxy "socks5://127.0.0.1:$__FOUND_PORT" \
      http://cloudflare.com/cdn-cgi/trace >/dev/null 2>&1; then
   export ALL_PROXY="socks5://127.0.0.1:$__FOUND_PORT"

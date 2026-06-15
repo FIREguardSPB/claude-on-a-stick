@@ -1,4 +1,4 @@
-﻿# payload/decrypt.ps1 — STICK-SIDE token decryptor (Windows).  [VERIFIED template]
+﻿# payload/decrypt.ps1 - STICK-SIDE token decryptor (Windows).  [VERIFIED template]
 #
 # Copied verbatim onto the stick by the builder. Invoked by env.bat:
 #     for /f "usebackq delims=" %%T in (`powershell -NoProfile -ExecutionPolicy Bypass ^

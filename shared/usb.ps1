@@ -1,4 +1,4 @@
-﻿# shared/usb.ps1 — claude-on-a-stick
+﻿# shared/usb.ps1 - claude-on-a-stick
 # ===========================================================================
 # Removable-disk enumeration + interactive pick + exFAT format helper (Windows)
 #

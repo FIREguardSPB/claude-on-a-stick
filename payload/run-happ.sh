@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# run-happ.sh — portable launcher for the bundled Happ client (POSIX side).
+# run-happ.sh - portable launcher for the bundled Happ client (POSIX side).
 # Mirrors apps/happ/run-happ.bat. See CONTRACTS.md §6 and §7.
 #
 # Responsibilities:
 #   - Redirect Happ's config/state onto the stick (XDG_CONFIG_HOME + HOME),
 #     so the host profile is never touched.
-#   - Launch the Happ binary in PROXY MODE (never TUN — TUN needs admin).
+#   - Launch the Happ binary in PROXY MODE (never TUN - TUN needs admin).
 #   - Optionally forward a `happ://…` subscription deep-link to the running
 #     instance (SingleApplication / QLocalServer IPC imports it). The scheme is
 #     NOT registered as an xdg handler, so we call the binary directly.
@@ -52,7 +52,7 @@ if [ -z "$__HAPP_BIN" ]; then
   __HAPP_BIN="$(find "$__HAPP_HOME" -maxdepth 4 -type f -name Happ -perm -u+x 2>/dev/null | head -n1 || true)"
 fi
 if [ -z "$__HAPP_BIN" ] || [ ! -x "$__HAPP_BIN" ]; then
-  printf '%s\n' "$(t happ no_bin 'Happ binary not found under apps/happ — VPN unavailable.')" >&2
+  printf '%s\n' "$(t happ no_bin 'Happ binary not found under apps/happ - VPN unavailable.')" >&2
   exit 1
 fi
 
@@ -65,7 +65,7 @@ if [ "${1:-}" != "" ]; then
       printf '%s\n' "$(t happ sub_insert 'Forwarding subscription deep-link to Happ…')" >&2
       "$__HAPP_BIN" "$1" >/dev/null 2>&1 &
       # Give IPC a moment; verification (conf lastSubscription / subs.db bump)
-      # is the builder's job — here we just print the link as a manual fallback.
+      # is the builder's job - here we just print the link as a manual fallback.
       sleep 2 2>/dev/null || true
       printf '%s %s\n' "$(t happ sub_fallback 'If it did not import, paste this into Happ manually:')" "$1" >&2
       exit 0 ;;

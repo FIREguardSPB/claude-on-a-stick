@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# start.sh — entry point for claude-on-a-stick (POSIX side).
+# start.sh - entry point for claude-on-a-stick (POSIX side).
 # Mirrors START.bat and the launcher chain in CONTRACTS.md §3, in order:
-#   1. vpnup    — bring Happ up if bundled (proxy mode), export proxy env.
-#   2. geoguard — refuse to launch from a blocked exit country (§5).
-#   3. env      — redirect config/tmp onto the stick, clear API key, unlock the
+#   1. vpnup    - bring Happ up if bundled (proxy mode), export proxy env.
+#   2. geoguard - refuse to launch from a blocked exit country (§5).
+#   3. env      - redirect config/tmp onto the stick, clear API key, unlock the
 #                 encrypted OAuth token via decrypt.sh into memory only.
 #   4. cd projects/ and exec claude --model <MODEL> "$@".
 #
@@ -30,7 +30,7 @@ export LANG_CHOICE
 # t() signature (t <dotted.key> [args]) and a different key scheme, so sourcing
 # it here would shadow this t() and leak <<key>> sentinels. Keeping the launcher
 # self-contained means start.sh runs identically whether or not i18n.sh is on
-# the stick — and never errors if it is absent. (vpnup/geoguard/env/diag agree.)
+# the stick - and never errors if it is absent. (vpnup/geoguard/env/diag agree.)
 if ! command -v t >/dev/null 2>&1; then
   # t <ns> <key> <literal...> -> prints the literal default (drops ns + key).
   t() { shift 2>/dev/null || true; shift 2>/dev/null || true; printf '%s' "${*:-}"; }
@@ -47,7 +47,7 @@ printf '%s\n' "$(t start banner '=== claude-on-a-stick ===')" >&2
 # We SOURCE geoguard (not run it as a child) so that any HTTPS_PROXY/HTTP_PROXY
 # it exported on the blocked-region path survives into THIS shell and is
 # inherited by claude. But geoguard calls `exit` to signal its verdict, which
-# would tear down start.sh — so we run it in a subshell purely to capture the
+# would tear down start.sh - so we run it in a subshell purely to capture the
 # OK/refuse verdict, then (only when the VPN was needed) re-source vpnup here to
 # re-establish the proxy vars in this shell. vpnup smart-detects the already-live
 # port, so the re-source is cheap and idempotent.
@@ -61,7 +61,7 @@ if [ -f "$STICK/geoguard.sh" ]; then
   # If geoguard's verdict relied on the bundled VPN it left a marker (with the
   # detected proxy URL). ONLY then do we re-establish the proxy vars in this
   # shell. On a SAFE region geoguard leaves no marker, so the VPN is never
-  # touched here — preserving the §5 smart-skip guarantee.
+  # touched here - preserving the §5 smart-skip guarantee.
   __VPN_MARK="$STICK/tmp/.vpn_raised"
   if [ -f "$__VPN_MARK" ] && [ -z "${HTTPS_PROXY:-}" ]; then
     # Re-source vpnup to smart-detect the already-live port (cheap; Happ is up).
@@ -87,7 +87,7 @@ fi
 # updates, and unlocks CLAUDE_CODE_OAUTH_TOKEN (prompts "Stick password"). It is
 # sourced so the token + env live in THIS shell only (never written to disk).
 if [ ! -f "$STICK/env.sh" ]; then
-  printf '%s\n' "$(t start no_env 'env.sh missing — stick is incomplete.')" >&2
+  printf '%s\n' "$(t start no_env 'env.sh missing - stick is incomplete.')" >&2
   exit 1
 fi
 # shellcheck disable=SC1090
@@ -99,7 +99,7 @@ fi
 # --- step 4: locate the claude binary, cd to projects, exec ------------------
 CLAUDE_BIN="$STICK/bin/claude"
 if [ ! -x "$CLAUDE_BIN" ]; then
-  printf '%s\n' "$(t start no_binary 'bin/claude not found or not executable — was the stick built?')" >&2
+  printf '%s\n' "$(t start no_binary 'bin/claude not found or not executable - was the stick built?')" >&2
   exit 1
 fi
 
