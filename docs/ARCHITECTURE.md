@@ -1,9 +1,9 @@
-# Architecture — claude-on-a-stick
+# Architecture - claude-on-a-stick
 
 This document explains *how* claude-on-a-stick is put together. It is a companion
 to [`CONTRACTS.md`](../CONTRACTS.md) (the binding build spec) and to
 [`SECURITY.md`](./SECURITY.md) (the threat model). Where this doc and `CONTRACTS.md`
-disagree, **`CONTRACTS.md` wins** — it is the source of truth.
+disagree, **`CONTRACTS.md` wins** - it is the source of truth.
 
 > One-line summary: a public, MIT, interactive **builder** turns a blank USB stick
 > into a portable, no-install environment that runs the **real Claude Code** CLI
@@ -12,7 +12,7 @@ disagree, **`CONTRACTS.md` wins** — it is the source of truth.
 
 The repo ships **only logic**. The Claude Code binary, the Happ VPN, the auth token,
 and any subscription link are downloaded or entered **at build time** and land on the
-stick — they are **never** committed to git (see `.gitignore` and
+stick - they are **never** committed to git (see `.gitignore` and
 [`SECURITY.md`](./SECURITY.md)).
 
 ---
@@ -26,7 +26,7 @@ stick** and run **every time** the stick is plugged into a target PC.
 ```
                          BUILD HOST (run once)                 TARGET PC (run each plug-in)
   ┌───────────────────────────────────────────┐   ┌──────────────────────────────────────────┐
-  │ LAYER 1 — BUILDER                           │   │ LAYER 3 — RUNTIME GUARD                    │
+  │ LAYER 1 - BUILDER                           │   │ LAYER 3 - RUNTIME GUARD                    │
   │  builders/posix/build.sh                    │   │  START → vpnup → geoguard → env/decrypt →  │
   │  builders/windows/build.ps1                 │   │         cd projects/ → exec claude         │
   │  (+ shared/: i18n, crypto, happ, usb)       │   │  (geo-guard, token unlock, proxy wiring)   │
@@ -34,7 +34,7 @@ stick** and run **every time** the stick is plugged into a target PC.
   │  • pick language (RU/EN)                    │                      ▲ reads / drives
   │  • select + format USB (exFAT, MBR, 0x07)   │                      │
   │  • download claude binary (sha256-verified) │   ┌──────────────────────────────────────────┐
-  │  • optionally download + portable-ize Happ  │   │ LAYER 2 — PAYLOAD (the produced artifact)  │
+  │  • optionally download + portable-ize Happ  │   │ LAYER 2 - PAYLOAD (the produced artifact)  │
   │  • `claude setup-token` → AES-encrypt       │──▶│  bin/claude(.exe)                          │
   │  • paste subscription link → Happ deep-link │   │  config/{oauth.enc,settings.json,...}      │
   │  • copy payload templates onto the stick    │   │  apps/happ/… (optional)                    │
@@ -43,36 +43,36 @@ stick** and run **every time** the stick is plugged into a target PC.
                                                      └──────────────────────────────────────────┘
 ```
 
-### Layer 1 — Builder (`builders/` + `shared/`)
+### Layer 1 - Builder (`builders/` + `shared/`)
 Interactive, runs once on the user's own machine to **produce** a stick. It is the
 only layer that touches the network for downloads, formats the USB, mints/encrypts the
 token, and templates the launchers for the chosen OS + language + model. It writes the
 payload onto the stick and then exits; it leaves no daemon behind.
 
-Two first-class entry points (no shared runtime between them — only shared *design*):
-- `builders/posix/build.sh` — Linux (solid/verified) + macOS (best-effort/guided).
-- `builders/windows/build.ps1` — Windows. **First-class**: the Windows audience is
+Two first-class entry points (no shared runtime between them - only shared *design*):
+- `builders/posix/build.sh` - Linux (solid/verified) + macOS (best-effort/guided).
+- `builders/windows/build.ps1` - Windows. **First-class**: the Windows audience is
   expected to download and run the builder directly on Windows.
 
 Shared helpers, split by language because the two builders never call each other:
-- `shared/i18n.sh` / `shared/i18n.ps1` — RU/EN message map + accessor.
-- `shared/crypto.sh` / `shared/crypto.ps1` — token encrypt/decrypt (build side).
-- `shared/happ.sh` / `shared/happ.ps1` — download, portable-ize, deep-link the sub.
-- `shared/usb.sh` / `shared/usb.ps1` — enumerate removable disks, confirm, format.
+- `shared/i18n.sh` / `shared/i18n.ps1` - RU/EN message map + accessor.
+- `shared/crypto.sh` / `shared/crypto.ps1` - token encrypt/decrypt (build side).
+- `shared/happ.sh` / `shared/happ.ps1` - download, portable-ize, deep-link the sub.
+- `shared/usb.sh` / `shared/usb.ps1` - enumerate removable disks, confirm, format.
 
-### Layer 2 — Payload (the produced artifact on the stick)
+### Layer 2 - Payload (the produced artifact on the stick)
 The static result of a build. It contains the Claude binary, the encrypted token and
 config, the optional Happ VPN, the user's `projects/`, and the launcher scripts. The
-payload is templated from `payload/` at build time — the templates in the repo carry
+payload is templated from `payload/` at build time - the templates in the repo carry
 **no** secrets; the per-stick values (OS, language, model, proxy port) are baked in by
 the builder.
 
-### Layer 3 — Runtime guard (the launcher chain on the stick)
+### Layer 3 - Runtime guard (the launcher chain on the stick)
 The behaviour that runs **every time** the user double-clicks `START` on a target PC.
 It brings up the VPN if present, enforces the geo-guard, unlocks the token in memory,
 sets the exact environment, and execs the real `claude` binary. This layer is what
 makes the stick *safe to use* (anti-ban) and *portable* (no install, config redirected
-onto the stick). Details in §4–§7 below.
+onto the stick). Details in §4-§7 below.
 
 ---
 
@@ -154,7 +154,7 @@ language + model).
 ## 4. The launcher chain (runtime guard, in order)
 
 `START` is the single entry point on the stick. It orchestrates the other launchers.
-The order and the env protocol are **identical across all OSes** by contract — this is
+The order and the env protocol are **identical across all OSes** by contract - this is
 non-negotiable so that a stick behaves the same whether plugged into Windows, Linux, or
 macOS.
 
@@ -174,15 +174,15 @@ START
                                                             default claude-opus-4-8)
 ```
 
-### Env set before claude (names are EXACT — see `CONTRACTS.md` §3)
+### Env set before claude (names are EXACT - see `CONTRACTS.md` §3)
 - `CLAUDE_CONFIG_DIR=<STICK>/config`
 - `HOME=<STICK>/config` (POSIX). On Windows, `USERPROFILE` is left as the host's, but
   `CLAUDE_CONFIG_DIR` governs where Claude reads/writes config.
 - `TMP` and `TEMP` = `<STICK>/tmp`
-- `ANTHROPIC_API_KEY=` — **cleared**, so a stray host API key can't override the
+- `ANTHROPIC_API_KEY=` - **cleared**, so a stray host API key can't override the
   subscription token.
-- `CLAUDE_CODE_OAUTH_TOKEN=<decrypted token>` — **in memory only, never on disk.**
-- `DISABLE_AUTOUPDATER=1` and `DISABLE_UPDATES=1` — the stick's binary is pinned.
+- `CLAUDE_CODE_OAUTH_TOKEN=<decrypted token>` - **in memory only, never on disk.**
+- `DISABLE_AUTOUPDATER=1` and `DISABLE_UPDATES=1` - the stick's binary is pinned.
 - If a VPN is active:
   `HTTPS_PROXY=http://127.0.0.1:<port>`, `HTTP_PROXY=` (same value),
   `ALL_PROXY=socks5://127.0.0.1:<port>` (only if a SOCKS port is known),
@@ -190,14 +190,14 @@ START
 
 ### cmd `.bat` gotcha (learned the hard way)
 **Never put an unescaped `(` or `)` inside an `echo` that sits within a cmd
-`if ( … )` block** — the `)` closes the `if` block early and cmd dies with
+`if ( … )` block** - the `)` closes the `if` block early and cmd dies with
 "Непредвиденное появление: then" / "was unexpected at this time". In `.bat` launchers,
 use `goto` labels instead of parenthesised `if`/`else` blocks whenever the body
 contains echoed text that may include parentheses.
 
 ---
 
-## 5. Crypto format — token at rest (`config/oauth.enc`)
+## 5. Crypto format - token at rest (`config/oauth.enc`)
 
 The auth token comes from `claude setup-token` (a long-lived, inference-only token) and
 is stored AES-encrypted on the stick, unlocked with a password the user types at every
@@ -245,14 +245,14 @@ from an exit country known to be blocked, and it leaves the host's networking un
 when the user is already in a safe region. Rationale and limits are in
 [`SECURITY.md`](./SECURITY.md); the mechanics are here.
 
-Config — `geoguard.conf`:
+Config - `geoguard.conf`:
 ```
 GUARD_ENABLED=1
 BLOCKLIST=RU,BY,CU,IR,KP,SY
 INCONCLUSIVE=prompt        # prompt | block | allow
 ```
 
-Flow — `geoguard.{sh,ps1}` (and `geoguard.bat` shim):
+Flow - `geoguard.{sh,ps1}` (and `geoguard.bat` shim):
 ```
 0. GUARD_ENABLED=0 ?  ──yes──▶ return OK immediately (unrestricted-region users)
         │ no
@@ -262,7 +262,7 @@ Flow — `geoguard.{sh,ps1}` (and `geoguard.bat` shim):
      fallbacks: ipinfo.io/country , api.country.is
         │
         ▼
-2. Country NOT in BLOCKLIST ?  ──yes──▶ OK, and DO NOT touch the VPN (smart skip —
+2. Country NOT in BLOCKLIST ?  ──yes──▶ OK, and DO NOT touch the VPN (smart skip -
         │ no                            this is the user's whole point)
         ▼
 3. Blocked → bring up bundled Happ (vpnup) and RE-CHECK through the proxy
@@ -280,7 +280,7 @@ Flow — `geoguard.{sh,ps1}` (and `geoguard.bat` shim):
 
 Detection commands: PowerShell `Invoke-RestMethod` / `Invoke-WebRequest -Proxy`; bash
 `curl --max-time 8` (plus `--proxy` on the recheck). **Only the HTTP proxy works for the
-recheck** — PowerShell 5.1 has no SOCKS support, so the recheck always goes through
+recheck** - PowerShell 5.1 has no SOCKS support, so the recheck always goes through
 `HTTPS_PROXY`.
 
 ---
@@ -289,19 +289,19 @@ recheck** — PowerShell 5.1 has no SOCKS support, so the recheck always goes th
 
 Happ is **optional**. If the stick has no `apps/happ`, `vpnup` returns OK and the
 geo-guard simply relies on the host or system VPN (and still governs the launch). When
-Happ *is* bundled, it is always run in **proxy mode, never TUN** — TUN needs admin on
+Happ *is* bundled, it is always run in **proxy mode, never TUN** - TUN needs admin on
 every OS, which breaks the no-install promise.
 
-### Bring-up — `vpnup`
+### Bring-up - `vpnup`
 - Launch Happ via a `run-happ` wrapper that **redirects Happ's config onto the stick**
   so nothing is written to the host profile:
   - Windows: `set APPDATA=<STICK>\apps\happ\data`
   - POSIX: `XDG_CONFIG_HOME` / `HOME` → a stick directory
-- **Auto-detect the proxy port** — Happ's default varies (10808 observed, mixed). Probe
+- **Auto-detect the proxy port** - Happ's default varies (10808 observed, mixed). Probe
   `10808, 10809, 2080, 1080, 10800, 8080` by making a *real* HTTP request through each
   (`http://cloudflare.com/cdn-cgi/trace`); the first that returns 200 is the HTTP proxy
   → set `HTTPS_PROXY` to it.
-- Poll up to ~20–30s for the proxy to come up (Happ may take a moment to connect). Tell
+- Poll up to ~20-30s for the proxy to come up (Happ may take a moment to connect). Tell
   the user to enable **auto-connect on launch** in Happ; otherwise they must click
   connect once.
 
@@ -314,7 +314,7 @@ Releases: `github.com/Happ-proxy/happ-desktop` (~v2.17). Per OS:
   `setup-Happ.x64.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /NOICONS /CURRENTUSER /DIR=<dst>`
   (asInvoker, no admin), then copy the folder. (If building a Windows stick from Linux,
   run the installer under Wine: `wine setup-Happ.x64.exe /VERYSILENT /DIR=Z:\…`.)
-  Note: Happ on Windows bundles **no** VC++ runtime — most Win10/11 have it; if a bare
+  Note: Happ on Windows bundles **no** VC++ runtime - most Win10/11 have it; if a bare
   client errors `msvcp140.dll`, bundle the VC++ redist DLLs (documented).
 - **macOS (best-effort/unverified):** mount the `.dmg`, copy `Happ.app`; warn about
   Gatekeeper/quarantine (`xattr -dr com.apple.quarantine`). Codesigning and
@@ -375,7 +375,7 @@ Single partition, **MBR**, one partition of **type 0x07**, formatted **exFAT** w
 label `CLAUDE`. Per OS:
 - **Linux:** `lsblk -dno NAME,TRAN,RM,TYPE,SIZE,MODEL` → keep only `TYPE=disk AND
   TRAN=usb`; never offer internal disks; the user picks **explicitly** (do **not**
-  auto-pick — a USB HDD is also `TRAN=usb`). `wipefs -a`, MBR table, partition type
+  auto-pick - a USB HDD is also `TRAN=usb`). `wipefs -a`, MBR table, partition type
   0x07, `mkfs.exfat -L CLAUDE`. Needs `exfatprogs` + root. `sfdisk` may be absent → fall
   back to `parted`, then set MBR type 7 via `sfdisk`/`fdisk` (install the `fdisk`
   package if needed).

@@ -1,4 +1,4 @@
-# Security & Threat Model — claude-on-a-stick
+# Security & Threat Model - claude-on-a-stick
 
 This document describes what claude-on-a-stick protects, what it does **not** protect,
 and the trade-offs behind the locked design decisions. Read it together with
@@ -6,7 +6,7 @@ and the trade-offs behind the locked design decisions. Read it together with
 [`CONTRACTS.md`](../CONTRACTS.md) (the binding spec). Where this doc and `CONTRACTS.md`
 disagree, **`CONTRACTS.md` wins**.
 
-> TL;DR: the stick encrypts **one thing well** — your Claude auth token, with AES-256
+> TL;DR: the stick encrypts **one thing well** - your Claude auth token, with AES-256
 > behind a password. **Everything else on the stick is plaintext**: your transcripts,
 > your project files, and the Happ VPN subscription (within Happ's own store). If the
 > stick can hold client PII or other sensitive data, put **whole-volume encryption**
@@ -26,7 +26,7 @@ realistic adversaries:
 | Claude auth token (`oauth.enc`)        | Stick lost/stolen; another person reads the file | **AES-256-CBC, PBKDF2-HMAC-SHA1 ×300k, password-gated** |
 | The Claude **account** (not just token)| Geo-based ban for connecting from a blocked exit | **Geo-guard** refuses to launch from a blocked country |
 | Subscription / VPN sub link            | Leaking the user's paid VPN sub                  | Stored only inside Happ's own AES store on the stick |
-| User's work / transcripts              | Casual read on a found stick; host forensics     | **NOT encrypted by us** — see §3, §4                 |
+| User's work / transcripts              | Casual read on a found stick; host forensics     | **NOT encrypted by us** - see §3, §4                 |
 | The host PC                            | The stick leaving install residue                | Config redirected onto the stick; no daemons left    |
 
 Out of scope (explicitly): defending against a compromised/malicious **host OS** (a
@@ -40,7 +40,7 @@ best-effort GPG-verify the manifest, but we trust the upstream artifacts themsel
 ## 2. Token-only encryption: what it is, why we chose it
 
 The single secret we encrypt is the auth token from `claude setup-token` (a long-lived,
-**inference-only** token — not full account credentials). Format and KDF are fixed (see
+**inference-only** token - not full account credentials). Format and KDF are fixed (see
 [`ARCHITECTURE.md`](./ARCHITECTURE.md) §5 and `CONTRACTS.md` §4):
 
 ```
@@ -62,7 +62,7 @@ Properties and the reasoning:
 - **Why only the token?** It is the one secret whose leak directly enables abuse of the
   user's paid account. Encrypting it cheaply (one password, no whole-disk tooling)
   matches the "plug into any PC, no install" goal. Encrypting *everything* on the stick
-  is a different tool (whole-volume crypto) — see §4.
+  is a different tool (whole-volume crypto) - see §4.
 
 ### Residual risks of token-only AES
 - **Offline password guessing.** A lost stick gives an attacker `oauth.enc` and unlimited
@@ -73,7 +73,7 @@ Properties and the reasoning:
   tampering. The threat (someone editing the ciphertext on a found stick to do something
   useful) is marginal for a single encrypted token, so this is accepted.
 - **Token lifetime.** `setup-token` is long-lived. If the password and stick are both
-  compromised, **revoke the token** at the Anthropic account level — changing the stick
+  compromised, **revoke the token** at the Anthropic account level - changing the stick
   password alone does not invalidate an already-extracted token.
 
 ---
@@ -83,24 +83,24 @@ Properties and the reasoning:
 Token-only encryption means **the rest of the stick is readable by anyone who plugs it
 in**. Specifically:
 
-- **Transcripts and Claude state — plaintext** under `config/` (`CLAUDE_CONFIG_DIR`):
+- **Transcripts and Claude state - plaintext** under `config/` (`CLAUDE_CONFIG_DIR`):
   `settings.json`, `.claude.json`, and any conversation history / session state Claude
   writes there. Whatever you discussed with Claude is on the stick in the clear.
-- **Your work — plaintext** under `projects/` (the working directory Claude `cd`s into).
-  Source code, documents, client files — all unencrypted.
-- **Temp files — plaintext** under `tmp/` (`TMP`/`TEMP`). May contain fragments of work.
-- **The Happ VPN subscription — within Happ's own store.** The sub is imported into
+- **Your work - plaintext** under `projects/` (the working directory Claude `cd`s into).
+  Source code, documents, client files - all unencrypted.
+- **Temp files - plaintext** under `tmp/` (`TMP`/`TEMP`). May contain fragments of work.
+- **The Happ VPN subscription - within Happ's own store.** The sub is imported into
   Happ's `subs.db`, which Happ AES-encrypts with its **own** key, not your stick
-  password. Treat it as recoverable by anyone with the stick and effort — it is not
+  password. Treat it as recoverable by anyone with the stick and effort - it is not
   protected by *your* secret. The `apps/happ/data` config also lives on the stick.
-- **The launchers, geoguard.conf, README** — plaintext by design (they carry no
+- **The launchers, geoguard.conf, README** - plaintext by design (they carry no
   secrets).
 
 Only `config/oauth.enc` is protected by your password. Plan accordingly.
 
 ---
 
-## 4. Lost / stolen stick — token-only AES vs. whole-volume encryption
+## 4. Lost / stolen stick - token-only AES vs. whole-volume encryption
 
 This is the central trade-off. The two layers protect different things:
 
@@ -121,9 +121,9 @@ the exFAT volume:
   on any Windows PC. Note: macOS/Linux read it only with extra tooling, so this trades
   some cross-platform portability.
 - **Cross-platform → VeraCrypt.** A VeraCrypt container or fully-encrypted volume reads
-  on Windows/macOS/Linux with the VeraCrypt app installed — best when the stick must move
+  on Windows/macOS/Linux with the VeraCrypt app installed - best when the stick must move
   between OSes. (Requires running the VeraCrypt app on the host, which is a small install
-  / portable-app footprint — weigh against the "no trace" goal.)
+  / portable-app footprint - weigh against the "no trace" goal.)
 - **Linux → LUKS.** Strong and native on Linux, but Windows/macOS support is poor; pick
   this only for Linux-only sticks.
 
@@ -138,11 +138,11 @@ the exFAT volume:
 
 ---
 
-## 5. Anti-ban geo-guard — rationale and limits
+## 5. Anti-ban geo-guard - rationale and limits
 
 ### Why it exists
 Connecting to Claude from a sanctioned/blocked exit country can get the **account**
-flagged or banned — a far more expensive loss than the stick itself. The geo-guard's job
+flagged or banned - a far more expensive loss than the stick itself. The geo-guard's job
 is to make a blocked-region launch **fail loudly** rather than silently risk the account.
 The default blocklist is `RU, BY, CU, IR, KP, SY`.
 
@@ -151,7 +151,7 @@ The default blocklist is `RU, BY, CU, IR, KP, SY`.
    regions who do not want the check).
 2. It detects the **direct** exit country (no proxy) via `cloudflare.com/cdn-cgi/trace`,
    with `ipinfo.io` / `api.country.is` fallbacks.
-3. If the country is **not** blocked, it returns OK and **does not touch the VPN** — the
+3. If the country is **not** blocked, it returns OK and **does not touch the VPN** - the
    user's whole point is to avoid forcing traffic through a tunnel when they don't need
    one.
 4. If blocked, it brings up the bundled Happ and **re-checks through the proxy**. Still
@@ -159,7 +159,7 @@ The default blocklist is `RU, BY, CU, IR, KP, SY`.
 5. Undetermined (no network) → act per `INCONCLUSIVE` (`prompt` | `block` | `allow`),
    default `prompt`.
 
-### Limits — what the geo-guard is **not**
+### Limits - what the geo-guard is **not**
 - **It is an account-safety heuristic, not anonymity or privacy.** It only checks the
   *exit IP's* country via third-party geo-IP services, which can be wrong, stale, or
   unreachable. It does not hide who you are, does not defeat traffic analysis, and does
@@ -174,7 +174,7 @@ The default blocklist is `RU, BY, CU, IR, KP, SY`.
 
 ---
 
-## 6. "No trace on the host" — claims and their limits
+## 6. "No trace on the host" - claims and their limits
 
 A real goal of the stick is to leave the **host PC** as clean as possible:
 - Claude's config, history, and temp are redirected onto the stick
@@ -214,7 +214,7 @@ the basics.
 - **Download integrity:** the Claude binary is **sha256-verified** against the official
   manifest `checksum`; the manifest signature is **best-effort GPG-verified** when `gpg`
   is present. Both downloads trust the official hosts
-  (`downloads.claude.ai`, `github.com/Happ-proxy`) — a compromise of those upstream is
+  (`downloads.claude.ai`, `github.com/Happ-proxy`) - a compromise of those upstream is
   out of scope.
 - **No third-party token/sub minting.** The token is the user's own
   (`claude setup-token`); the VPN subscription is whatever the user pastes (raw URL →
@@ -228,9 +228,9 @@ the basics.
 - Use a **strong, unique** stick password; it is the only thing standing between a lost
   stick and your Claude account.
 - If the stick is lost **and** you fear the password is weak/known: **revoke the
-  `setup-token`** at the account level — don't rely on the password alone.
+  `setup-token`** at the account level - don't rely on the password alone.
 - **Do not** put client PII or regulated data on a token-only stick. Add **BitLocker To
-  Go / VeraCrypt / LUKS** first (§4) — this is the 152-ФЗ/GDPR-relevant control.
+  Go / VeraCrypt / LUKS** first (§4) - this is the 152-ФЗ/GDPR-relevant control.
 - Keep `GUARD_ENABLED=1` unless you are certain you are in an unrestricted region; leave
   `INCONCLUSIVE=prompt` so a failed geo-check asks rather than silently allows.
 - Treat every host PC as untrusted: assume it can log USB use and, if malicious, capture
