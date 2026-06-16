@@ -123,6 +123,9 @@ function Die { param([string]$m) Write-ErrLine $m; exit 1 }
 # ==============================================================================
 $script:ResolvedProxy = $null
 $script:WebProxyArgs = @{}
+# True when the resolved proxy was already exported by the user in their own shell
+# (case (b) below). We then must NOT clobber $env:HTTPS_PROXY/$env:HTTP_PROXY.
+$script:ProxyFromUserEnv = $false
 
 # Common local HTTP-proxy ports exposed by popular VPN/proxy clients in proxy
 # mode (v2rayN/Nekoray 10808/10809, sing-box 2080/2081, generic SOCKS/HTTP 1080,
@@ -175,6 +178,8 @@ function Resolve-WebProxy {
             if (Test-UsableProxyUrl $val) {
                 $script:ResolvedProxy = $val.Trim()
                 $script:WebProxyArgs = @{ Proxy = $script:ResolvedProxy }
+                # The user exported this in their own shell - respect it; never clobber.
+                $script:ProxyFromUserEnv = $true
                 Write-Ok ((T 'proxy_using') -f $script:ResolvedProxy)
                 return
             }
@@ -198,6 +203,37 @@ function Resolve-WebProxy {
 
     # (d) none -> direct (PS still consults the system WinINET proxy on its own).
     Write-Host (T 'proxy_none') -ForegroundColor DarkGray
+}
+
+# Export the RESOLVED proxy into the process environment so that EVERY child
+# `claude` process the builder spawns - `claude setup-token` and the `--version`
+# self-test - inherits HTTPS_PROXY/HTTP_PROXY and routes its Anthropic OAuth/API
+# calls through the SAME proxy that downloads succeeded on. Without this, those
+# children call DIRECT and, from a restricted region, fail with
+# "OAuth error: Request failed with status code 403" right after browser login.
+# PS web cmdlets do NOT auto-honor these vars (hence the -Proxy splat), but
+# Claude Code DOES, so exporting the already-resolved proxy is the fix.
+#
+# Rules:
+#   * Only act when a proxy was actually resolved (case a/b/c). When none was
+#     resolved (case d), force NOTHING - stay direct, system proxy still applies.
+#   * Never clobber a value the user explicitly exported in their own shell
+#     (case b: $script:ProxyFromUserEnv). Set our resolved value only when the
+#     env var is empty or differs AND it did not come from the user's own env.
+#   * Always add localhost/127.0.0.1 to NO_PROXY so local calls aren't proxied.
+function Export-ResolvedProxyEnv {
+    if (-not $script:ResolvedProxy) { return }   # case (d): leave the env untouched.
+
+    # Respect a user-exported proxy verbatim (came straight from their env).
+    if (-not $script:ProxyFromUserEnv) {
+        if ($env:HTTPS_PROXY -ne $script:ResolvedProxy) { $env:HTTPS_PROXY = $script:ResolvedProxy }
+        if ($env:HTTP_PROXY  -ne $script:ResolvedProxy) { $env:HTTP_PROXY  = $script:ResolvedProxy }
+        Write-Host ((T 'proxy_exported') -f $script:ResolvedProxy) -ForegroundColor DarkGray
+    }
+
+    # Keep local traffic off the proxy. Only seed NO_PROXY if the user left it empty.
+    if ([string]::IsNullOrWhiteSpace($env:NO_PROXY)) { $env:NO_PROXY = 'localhost,127.0.0.1,::1' }
+    if ([string]::IsNullOrWhiteSpace($env:no_proxy)) { $env:no_proxy = $env:NO_PROXY }
 }
 
 # Replace a raw download/manifest WebException with a clear, actionable message
@@ -258,6 +294,7 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
             proxy_socks_skip     = 'Ignoring proxy {0}: PowerShell web cmdlets support only http(s):// proxies, not socks5://.'
             proxy_probing        = 'No proxy set - probing for a local HTTP proxy (your VPN in proxy mode)...'
             proxy_none           = 'No proxy resolved - downloading directly (the system proxy, if any, still applies).'
+            proxy_exported       = 'Exported proxy {0} into the environment so claude setup-token / self-test inherit it.'
             proxy_unreachable    = "Cannot reach downloads.claude.ai. Enable your VPN, OR set `$env:HTTPS_PROXY=http://127.0.0.1:<port> (your VPN's local HTTP proxy), OR set the Windows system proxy, then retry."
             # ---- MULTI-OS STICK target selection (one stick, any OS) ----
             step_target          = 'Choosing target platform(s)'
@@ -409,6 +446,7 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
             proxy_socks_skip     = 'Прокси {0} проигнорирован: веб-командлеты PowerShell поддерживают только http(s)://, а не socks5://.'
             proxy_probing        = 'Прокси не задан - ищу локальный HTTP-прокси (ваш VPN в режиме прокси)...'
             proxy_none           = 'Прокси не найден - качаю напрямую (системный прокси, если есть, всё равно применяется).'
+            proxy_exported       = 'Прокси {0} прописан в окружение, чтобы его унаследовали claude setup-token и самопроверка.'
             proxy_unreachable    = "Не удаётся подключиться к downloads.claude.ai. Включите VPN, ЛИБО задайте `$env:HTTPS_PROXY=http://127.0.0.1:<порт> (локальный HTTP-прокси вашего VPN), ЛИБО задайте системный прокси Windows, затем повторите."
             # ---- MULTI-OS: выбор целевых платформ (одна флешка - любая ОС) ----
             step_target          = 'Выбор целевой платформы (платформ)'
@@ -617,6 +655,11 @@ Write-Host (T 'welcome_sub') -ForegroundColor DarkGray
 # $script:WebProxyArgs (splatted into every web cmdlet) + $script:ResolvedProxy.
 # Done before the shared modules load so happ.ps1 can read $script:ResolvedProxy.
 Resolve-WebProxy
+# Export the resolved proxy into the environment so the child `claude` processes
+# (setup-token + the --version self-test) inherit HTTPS_PROXY/HTTP_PROXY and don't
+# call Anthropic DIRECT (which 403s from restricted regions). Must run before the
+# token step AND the self-test; no-op when no proxy was resolved or user-set.
+Export-ResolvedProxyEnv
 
 # Bring in the rest of the shared toolkit (they also define local T() fallbacks,
 # but ours is already in scope, so they reuse it).

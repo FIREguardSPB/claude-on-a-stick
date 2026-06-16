@@ -163,8 +163,31 @@ have() { command -v "$1" >/dev/null 2>&1; }
 PROXY_PROBE_PORTS="10808 10809 2080 2081 1080 10800 7890 8080 1087"
 PROXY_RESOLVED=0   # guard so resolve_proxy() runs at most once
 
+# Mirror the resolved $HTTPS_PROXY into the rest of the proxy env so EVERY child
+# process the builder spawns - notably `claude setup-token` and the `--version`
+# self-test - inherits it and routes its Anthropic OAuth/API calls through the
+# SAME proxy that downloads succeeded on. Claude Code honors HTTPS_PROXY/HTTP_PROXY;
+# without this the children call DIRECT and 403 from a restricted region right
+# after the browser login. Runs in the MAIN shell (resolve_proxy is called from
+# download_claude, not a subshell), so the exports persist to the token + self-test
+# steps. Never clobbers a HTTP_PROXY the user explicitly exported; only seeds
+# NO_PROXY when the user left it empty.
+_export_proxy_env() {
+	[ -n "${HTTPS_PROXY:-}" ] || return 0
+	# Mirror into HTTP_PROXY unless the user already set a (possibly different) one.
+	if [ -z "${HTTP_PROXY:-}" ]; then HTTP_PROXY="$HTTPS_PROXY"; fi
+	export HTTP_PROXY
+	# Keep local traffic off the proxy (only seed when the user left it empty).
+	if [ -z "${NO_PROXY:-}" ]; then NO_PROXY="localhost,127.0.0.1,::1"; fi
+	export NO_PROXY
+	if [ -z "${no_proxy:-}" ]; then no_proxy="$NO_PROXY"; fi
+	export no_proxy
+}
+
 # Resolve a usable HTTP(S) proxy into $HTTPS_PROXY (exported), if not already set.
 # Honors an existing HTTPS_PROXY/HTTP_PROXY/ALL_PROXY first, then auto-detects.
+# On every path where a proxy is resolved, also exports HTTP_PROXY + NO_PROXY via
+# _export_proxy_env so child `claude` processes inherit the same route.
 resolve_proxy() {
 	[ "$PROXY_RESOLVED" = "1" ] && return 0
 	PROXY_RESOLVED=1
@@ -172,16 +195,19 @@ resolve_proxy() {
 	# (a)/(b) already set via the environment -> normalize HTTPS_PROXY and announce.
 	if [ -n "${HTTPS_PROXY:-}" ]; then
 		export HTTPS_PROXY
+		_export_proxy_env
 		info "$(t proxy_using "$HTTPS_PROXY")"
 		return 0
 	fi
 	if [ -n "${https_proxy:-}" ]; then
 		HTTPS_PROXY="$https_proxy"; export HTTPS_PROXY
+		_export_proxy_env
 		info "$(t proxy_using "$HTTPS_PROXY")"
 		return 0
 	fi
 	if [ -n "${HTTP_PROXY:-}" ]; then
 		HTTPS_PROXY="$HTTP_PROXY"; export HTTPS_PROXY
+		_export_proxy_env
 		info "$(t proxy_using "$HTTPS_PROXY")"
 		return 0
 	fi
@@ -189,6 +215,7 @@ resolve_proxy() {
 		# socks5:// is fine for curl's --proxy, but the Windows side can't use it;
 		# we accept whatever curl accepts here for parity of the *route*.
 		HTTPS_PROXY="$ALL_PROXY"; export HTTPS_PROXY
+		_export_proxy_env
 		info "$(t proxy_using "$HTTPS_PROXY")"
 		return 0
 	fi
@@ -201,6 +228,7 @@ resolve_proxy() {
 		_cand="http://127.0.0.1:$_port"
 		if curl -fsS --max-time 4 -x "$_cand" http://cloudflare.com/cdn-cgi/trace >/dev/null 2>&1; then
 			HTTPS_PROXY="$_cand"; export HTTPS_PROXY
+			_export_proxy_env
 			info "$(t proxy_using "$HTTPS_PROXY")"
 			return 0
 		fi
