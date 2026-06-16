@@ -183,6 +183,30 @@ Result: a self-contained `CLAUDE` stick you can hand to any supported machine. I
 targeted several OSes, the same stick runs on all of them - it auto-selects the right
 binary (`CLAUDE_BIN`) for whatever machine you plug into.
 
+### Building behind a proxy / restricted region
+
+The builder downloads the official `claude` binary from `downloads.claude.ai`. In
+restricted regions that host may not resolve unless your traffic goes through a
+proxy or VPN. The builder routes **all** of its build-time web traffic (manifest,
+version, binary download, GPG signature, Happ) through a proxy when one is
+available:
+
+- **Set it explicitly.** Before building, set the proxy env var to your VPN's
+  local HTTP proxy:
+  - Windows (PowerShell): `$env:HTTPS_PROXY = "http://127.0.0.1:10809"`,
+    or pass `-Proxy http://127.0.0.1:10809` to `build.ps1`.
+  - Linux/macOS: `export HTTPS_PROXY=http://127.0.0.1:10809`.
+- **Or let it auto-detect.** If no proxy is set, the builder probes common local
+  HTTP-proxy ports (10808, 10809, 2080, 2081, 1080, 10800, 7890, 8080, 1087) and
+  uses the first that works - so just turn on your VPN in **proxy mode** and run
+  the builder.
+- **Or use the system proxy.** A Windows system proxy is honored automatically.
+
+Notes: only `http(s)://` proxies work for the Windows builder (a `socks5://` URL
+is skipped with a notice; curl on Linux/macOS can still use SOCKS). If the host is
+still unreachable and no proxy was found, the builder prints a clear message
+telling you to enable your VPN or set `HTTPS_PROXY`, then retry.
+
 ---
 
 ## Security model (please understand this)

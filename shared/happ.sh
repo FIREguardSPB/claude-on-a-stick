@@ -29,13 +29,42 @@ _happ_say()  { printf '%s\n' "$*" >&2; }
 _happ_warn() { printf '!! %s\n' "$*" >&2; }
 _happ_err()  { printf '!! %s\n' "$*" >&2; }
 
+# --- Proxy for the GitHub API + asset downloads (parity with build.sh) -------------------------
+# curl honors $HTTPS_PROXY, but a restricted-region user may have only a local HTTP
+# proxy that is NOT exported. If build.sh already resolved+exported HTTPS_PROXY we
+# reuse it; otherwise honor HTTP(S)_PROXY/ALL_PROXY, then auto-detect a local HTTP
+# proxy on the same common VPN ports. Idempotent (runs once). _happ_proxy_flag echoes
+# the curl --proxy flag (empty when none).
+_HAPP_PROXY_PROBE_PORTS="10808 10809 2080 2081 1080 10800 7890 8080 1087"
+_HAPP_PROXY_RESOLVED=0
+_happ_resolve_proxy() {
+  [ "$_HAPP_PROXY_RESOLVED" = "1" ] && return 0
+  _HAPP_PROXY_RESOLVED=1
+  if [ -n "${HTTPS_PROXY:-}" ]; then export HTTPS_PROXY; return 0; fi
+  if [ -n "${https_proxy:-}" ]; then HTTPS_PROXY="$https_proxy"; export HTTPS_PROXY; return 0; fi
+  if [ -n "${HTTP_PROXY:-}" ];  then HTTPS_PROXY="$HTTP_PROXY";  export HTTPS_PROXY; return 0; fi
+  if [ -n "${ALL_PROXY:-}" ];   then HTTPS_PROXY="$ALL_PROXY";   export HTTPS_PROXY; return 0; fi
+  command -v curl >/dev/null 2>&1 || return 0
+  local _p _c
+  for _p in $_HAPP_PROXY_PROBE_PORTS; do
+    _c="http://127.0.0.1:$_p"
+    if curl -fsS --max-time 4 -x "$_c" http://cloudflare.com/cdn-cgi/trace >/dev/null 2>&1; then
+      HTTPS_PROXY="$_c"; export HTTPS_PROXY; return 0
+    fi
+  done
+  return 0
+}
+_happ_proxy_flag() { [ -n "${HTTPS_PROXY:-}" ] && printf -- '--proxy %s' "$HTTPS_PROXY"; }
+
 # --------------------------------------------------------------------------------------------------
 # 1) Resolve latest release tag from the GitHub API.
 #    Prefer jq; fall back to a python json parse; finally a grep so we never hard-depend on jq.
 # --------------------------------------------------------------------------------------------------
 happ_latest_tag() {
   local json tag
-  json="$(curl -fsSL --max-time 20 -H 'Accept: application/vnd.github+json' "$HAPP_API" 2>/dev/null)" || true
+  _happ_resolve_proxy
+  # shellcheck disable=SC2046  # intentional word-split of the proxy flag
+  json="$(curl -fsSL --max-time 20 $(_happ_proxy_flag) -H 'Accept: application/vnd.github+json' "$HAPP_API" 2>/dev/null)" || true
   [ -n "$json" ] || { _happ_err "$(t happ_api_fail)"; return 1; }
 
   if command -v jq >/dev/null 2>&1; then
@@ -93,8 +122,10 @@ happ_download() {
   out="$out_dir/$asset"
 
   _happ_say "$(t happ_downloading) ${asset} (${tag})"
+  _happ_resolve_proxy
   if command -v curl >/dev/null 2>&1; then
-    curl -fL --retry 3 --max-time 600 -o "$out" "$url" || { _happ_err "$(t happ_dl_fail) $url"; return 1; }
+    # shellcheck disable=SC2046  # intentional word-split of the proxy flag
+    curl -fL --retry 3 --max-time 600 $(_happ_proxy_flag) -o "$out" "$url" || { _happ_err "$(t happ_dl_fail) $url"; return 1; }
   elif command -v wget >/dev/null 2>&1; then
     wget -q -O "$out" "$url" || { _happ_err "$(t happ_dl_fail) $url"; return 1; }
   else

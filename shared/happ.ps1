@@ -32,12 +32,64 @@ function Write-HappInfo { param([string]$Msg) Write-Host $Msg }
 function Write-HappWarn { param([string]$Msg) Write-Warning $Msg }
 
 # --------------------------------------------------------------------------------------------------
+# Proxy for the GitHub API + asset downloads. PS web cmdlets do NOT auto-honor
+# $env:HTTPS_PROXY, so a restricted-region user with only a local HTTP proxy would
+# fail to reach api.github.com / github.com. We mirror build.ps1's resolution:
+#   1) reuse $script:ResolvedProxy when build.ps1 already resolved one (dot-sourced
+#      into the same scope);
+#   2) else $env:HTTPS_PROXY / HTTP_PROXY / ALL_PROXY (http(s):// only);
+#   3) else auto-detect a local HTTP proxy on the common VPN ports.
+# Get-HappWebProxyArgs returns an empty hashtable (direct/system proxy) or
+# @{ Proxy = '<url>' } to splat into Invoke-RestMethod / Invoke-WebRequest.
+$script:HappProxyResolved = $false
+$script:HappProxyArgs = @{}
+$script:HappProbePorts = @(10808, 10809, 2080, 2081, 1080, 10800, 7890, 8080, 1087)
+
+function Get-HappWebProxyArgs {
+  if ($script:HappProxyResolved) { return $script:HappProxyArgs }
+  $script:HappProxyResolved = $true
+
+  # 1) build.ps1 already resolved a proxy in the shared scope -> reuse it verbatim.
+  $shared = Get-Variable -Name ResolvedProxy -Scope Script -ErrorAction SilentlyContinue
+  if ($shared -and -not [string]::IsNullOrWhiteSpace($shared.Value)) {
+    $script:HappProxyArgs = @{ Proxy = [string]$shared.Value }
+    return $script:HappProxyArgs
+  }
+
+  # 2) environment variables (http(s):// only; socks5:// is unusable by PS cmdlets).
+  foreach ($n in @('HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY')) {
+    $v = [Environment]::GetEnvironmentVariable($n)
+    if ([string]::IsNullOrWhiteSpace($v)) { $v = [Environment]::GetEnvironmentVariable($n.ToLower()) }
+    if (-not [string]::IsNullOrWhiteSpace($v) -and ($v -match '^(?i)https?://')) {
+      $script:HappProxyArgs = @{ Proxy = $v.Trim() }
+      return $script:HappProxyArgs
+    }
+  }
+
+  # 3) auto-detect a local HTTP proxy on the common ports (200 on a real request wins).
+  foreach ($port in $script:HappProbePorts) {
+    $p = "http://127.0.0.1:$port"
+    try {
+      $r = Invoke-WebRequest -Proxy $p -Uri 'http://cloudflare.com/cdn-cgi/trace' `
+          -UseBasicParsing -TimeoutSec 4 -ErrorAction Stop
+      if ($r.StatusCode -eq 200) { $script:HappProxyArgs = @{ Proxy = $p }; return $script:HappProxyArgs }
+    }
+    catch { }
+  }
+
+  # none -> direct (system WinINET proxy still applies automatically).
+  $script:HappProxyArgs = @{}
+  return $script:HappProxyArgs
+}
+
+# --------------------------------------------------------------------------------------------------
 # 1) Resolve latest release tag from the GitHub API (Invoke-RestMethod -> .tag_name).
 # --------------------------------------------------------------------------------------------------
 function Get-HappLatestTag {
   [CmdletBinding()] param()
+  $px = Get-HappWebProxyArgs
   try {
-    $rel = Invoke-RestMethod -Uri $script:HappApi -Headers @{ 'User-Agent' = 'claude-on-a-stick'; 'Accept' = 'application/vnd.github+json' } -TimeoutSec 25
+    $rel = Invoke-RestMethod -Uri $script:HappApi -Headers @{ 'User-Agent' = 'claude-on-a-stick'; 'Accept' = 'application/vnd.github+json' } -TimeoutSec 25 @px
   } catch {
     throw (T 'happ_api_fail')
   }
@@ -83,8 +135,9 @@ function Get-Happ {
   $out   = Join-Path $OutDir $asset
 
   Write-HappInfo ("{0} {1} ({2})" -f (T 'happ_downloading'), $asset, $tag)
+  $px = Get-HappWebProxyArgs
   try {
-    Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing -TimeoutSec 600
+    Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing -TimeoutSec 600 @px
   } catch {
     throw ("{0} {1}" -f (T 'happ_dl_fail'), $url)
   }

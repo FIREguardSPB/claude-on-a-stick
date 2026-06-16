@@ -150,6 +150,73 @@ die() { err "$(t err_prefix): $*"; exit 1; }
 # -----------------------------------------------------------------------------
 have() { command -v "$1" >/dev/null 2>&1; }
 
+# -----------------------------------------------------------------------------
+# 5b. PROXY RESOLUTION (parity with the Windows builder; CONTRACTS §8)
+#   curl/wget DO honor $HTTPS_PROXY already, but restricted-region users often
+#   only have a LOCAL HTTP PROXY (their VPN in proxy mode; no TUN/system VPN) and
+#   may not have it exported. So: if HTTPS_PROXY is unset, AUTO-DETECT one on the
+#   same common ports the Windows builder probes, export it, and surface a clear
+#   error when downloads.claude.ai is still unreachable. Idempotent (runs once).
+#   We pass --proxy "$HTTPS_PROXY" explicitly so the route is unambiguous.
+# -----------------------------------------------------------------------------
+# Common local HTTP-proxy ports exposed by popular VPN/proxy clients in proxy mode.
+PROXY_PROBE_PORTS="10808 10809 2080 2081 1080 10800 7890 8080 1087"
+PROXY_RESOLVED=0   # guard so resolve_proxy() runs at most once
+
+# Resolve a usable HTTP(S) proxy into $HTTPS_PROXY (exported), if not already set.
+# Honors an existing HTTPS_PROXY/HTTP_PROXY/ALL_PROXY first, then auto-detects.
+resolve_proxy() {
+	[ "$PROXY_RESOLVED" = "1" ] && return 0
+	PROXY_RESOLVED=1
+
+	# (a)/(b) already set via the environment -> normalize HTTPS_PROXY and announce.
+	if [ -n "${HTTPS_PROXY:-}" ]; then
+		export HTTPS_PROXY
+		info "$(t proxy_using "$HTTPS_PROXY")"
+		return 0
+	fi
+	if [ -n "${https_proxy:-}" ]; then
+		HTTPS_PROXY="$https_proxy"; export HTTPS_PROXY
+		info "$(t proxy_using "$HTTPS_PROXY")"
+		return 0
+	fi
+	if [ -n "${HTTP_PROXY:-}" ]; then
+		HTTPS_PROXY="$HTTP_PROXY"; export HTTPS_PROXY
+		info "$(t proxy_using "$HTTPS_PROXY")"
+		return 0
+	fi
+	if [ -n "${ALL_PROXY:-}" ]; then
+		# socks5:// is fine for curl's --proxy, but the Windows side can't use it;
+		# we accept whatever curl accepts here for parity of the *route*.
+		HTTPS_PROXY="$ALL_PROXY"; export HTTPS_PROXY
+		info "$(t proxy_using "$HTTPS_PROXY")"
+		return 0
+	fi
+
+	# (c) auto-detect a local HTTP proxy by making a real short request through each.
+	have curl || return 0   # nothing to probe with; http_dl/http_get handle wget/direct
+	info "$(t proxy_probing)"
+	local _port _cand
+	for _port in $PROXY_PROBE_PORTS; do
+		_cand="http://127.0.0.1:$_port"
+		if curl -fsS --max-time 4 -x "$_cand" http://cloudflare.com/cdn-cgi/trace >/dev/null 2>&1; then
+			HTTPS_PROXY="$_cand"; export HTTPS_PROXY
+			info "$(t proxy_using "$HTTPS_PROXY")"
+			return 0
+		fi
+	done
+
+	# (d) none -> direct.
+	info "$(t proxy_none)"
+	return 0
+}
+
+# Echo the curl/wget proxy flag for the resolved proxy (empty when none/wget-direct).
+# Usage:  curl ... $(curl_proxy_flag) ...
+curl_proxy_flag() {
+	[ -n "${HTTPS_PROXY:-}" ] && printf -- '--proxy %s' "$HTTPS_PROXY"
+}
+
 # Confirm yes/no with a default. Returns 0 for yes.
 confirm() {
 	# $1 = prompt text, $2 = default (y|n)
@@ -188,9 +255,13 @@ sha256_of() {
 }
 
 # HTTP GET to stdout (curl preferred, wget fallback). $1=url
+# Routes through $HTTPS_PROXY when one was resolved (explicit --proxy for curl; wget
+# honors the env var). resolve_proxy() is idempotent, so calling it here is cheap.
 http_get() {
+	resolve_proxy
 	if have curl; then
-		curl -fsSL --max-time 60 "$1"
+		# shellcheck disable=SC2046  # intentional word-split of the proxy flag
+		curl -fsSL --max-time 60 $(curl_proxy_flag) "$1"
 	elif have wget; then
 		wget -qO- --timeout=60 "$1"
 	else
@@ -200,13 +271,22 @@ http_get() {
 
 # HTTP download to a file. $1=url $2=dest
 http_dl() {
+	resolve_proxy
 	if have curl; then
-		curl -fL --retry 3 --max-time 1800 -o "$2" "$1"
+		# shellcheck disable=SC2046  # intentional word-split of the proxy flag
+		curl -fL --retry 3 --max-time 1800 $(curl_proxy_flag) -o "$2" "$1"
 	elif have wget; then
 		wget -O "$2" --tries=3 --timeout=1800 "$1"
 	else
 		die "$(t err_no_http)"
 	fi
+}
+
+# Clear, actionable hint to append when a download fails AND no proxy was resolved
+# (mirror of the Windows builder's proxy_unreachable). Empty when a proxy IS in use.
+proxy_fail_hint() {
+	[ -n "${HTTPS_PROXY:-}" ] && return 0
+	t proxy_unreachable
 }
 
 # Parse a string JSON value for a flat key path "a.b.c".  $1=json  $2=dotpath
@@ -592,7 +672,7 @@ download_one_platform() {
 	local bin_url="$DL_BASE/$ver/$plat/$binname"
 	local bin_tmp="$WORK_TMP/$plat-$binname"
 	info "[$plat] $(t downloading_binary) ($size bytes)"
-	http_dl "$bin_url" "$bin_tmp" || die "$(t err_download_binary)"
+	http_dl "$bin_url" "$bin_tmp" || die "$(t err_download_binary)$(h=$(proxy_fail_hint); [ -n "$h" ] && printf '\n%s' "$h")"
 
 	# sha256 verify - ABORT on mismatch
 	info "[$plat] $(t verifying_sha)"
@@ -626,18 +706,24 @@ download_claude() {
 		WORK_TMP=$(mktemp -d 2>/dev/null || mktemp -d -t cstick)
 	fi
 
+	# Resolve the build-time web proxy ONCE up front (auto-detect a local VPN HTTP
+	# proxy when HTTPS_PROXY is unset), so the version/manifest/binary fetches below
+	# all route through it. http_get/http_dl also call this, but doing it here means
+	# the "Using proxy ..." line prints before the first download.
+	resolve_proxy
+
 	# 1) resolve version (ONCE, shared across all platforms)
 	info "$(t resolving_version) ($CHANNEL)"
 	local ver
 	ver=$(http_get "$DL_BASE/$CHANNEL" | tr -d '[:space:]') \
-		|| die "$(t err_resolve_version)"
-	[ -n "$ver" ] || die "$(t err_resolve_version)"
+		|| die "$(t err_resolve_version)$(h=$(proxy_fail_hint); [ -n "$h" ] && printf '\n%s' "$h")"
+	[ -n "$ver" ] || die "$(t err_resolve_version)$(h=$(proxy_fail_hint); [ -n "$h" ] && printf '\n%s' "$h")"
 	ok "$(t version_is): $ver"
 
 	# 2) fetch manifest (ONCE)
 	local manifest_url="$DL_BASE/$ver/manifest.json"
 	local manifest_file="$WORK_TMP/manifest.json"
-	http_dl "$manifest_url" "$manifest_file" || die "$(t err_manifest)"
+	http_dl "$manifest_url" "$manifest_file" || die "$(t err_manifest)$(h=$(proxy_fail_hint); [ -n "$h" ] && printf '\n%s' "$h")"
 	local manifest; manifest=$(cat "$manifest_file")
 
 	# 2b) optional GPG verify of the manifest signature (best-effort, §8/§13; ONCE)

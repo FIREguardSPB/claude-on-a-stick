@@ -60,7 +60,17 @@ param(
     [string]$Target,
     # Non-interactive escape hatch for unattended runs / CI: never prompt for the
     # target list, just use -Target (or the host default). Mirrors the other -No* flags.
-    [switch]$NoTargetPrompt
+    [switch]$NoTargetPrompt,
+    # Explicit HTTP(S) proxy for ALL build-time web traffic (manifest/version fetch,
+    # binary download, GPG sig fetch, Happ). Highest priority. Example:
+    #   -Proxy http://127.0.0.1:10809
+    # Many restricted-region users only have a LOCAL HTTP PROXY (their VPN in proxy
+    # mode; TUN/system-VPN unavailable), and PS's Invoke-RestMethod/Invoke-WebRequest
+    # do NOT auto-honor $env:HTTPS_PROXY - so without this downloads.claude.ai fails
+    # to resolve and the build dies. If unset, the builder reads HTTPS_PROXY/HTTP_PROXY/
+    # ALL_PROXY, then AUTO-DETECTS a local HTTP proxy on common ports. (socks5:// is
+    # NOT usable by PS web cmdlets - only http(s):// proxies.)
+    [string]$Proxy
 )
 
 $ErrorActionPreference = 'Stop'
@@ -92,6 +102,119 @@ function Write-Ok { param([string]$m) Write-Host "[OK] $m" -ForegroundColor Gree
 function Write-Warn2 { param([string]$m) Write-Host "[!]  $m" -ForegroundColor Yellow }
 function Write-ErrLine { param([string]$m) Write-Host "[X]  $m" -ForegroundColor Red }
 function Die { param([string]$m) Write-ErrLine $m; exit 1 }
+
+# ==============================================================================
+#  PROXY RESOLUTION  -  PS's Invoke-RestMethod / Invoke-WebRequest do NOT auto-
+#  honor $env:HTTPS_PROXY. Restricted-region users often only have a LOCAL HTTP
+#  PROXY (VPN in proxy mode; no TUN), so without an explicit -Proxy the build
+#  cannot even resolve downloads.claude.ai. We resolve ONE proxy URL up front and
+#  pass it (via $script:WebProxyArgs splat) to EVERY web cmdlet.
+#
+#  Resolution priority:
+#    (a) explicit -Proxy <url> script param
+#    (b) $env:HTTPS_PROXY / $env:HTTP_PROXY / $env:ALL_PROXY   (http(s):// only;
+#        socks5:// URLs are NOT usable by PS web cmdlets - noted + skipped)
+#    (c) AUTO-DETECT a local HTTP proxy by probing common VPN proxy ports
+#    (d) none -> direct (PS still uses the system WinINET proxy automatically)
+#
+#  $script:WebProxyArgs is a hashtable that is empty when no proxy was resolved
+#  (so splatting it is a no-op and direct/system-proxy behaviour is unchanged),
+#  or @{ Proxy = '<url>' } when one was resolved.
+# ==============================================================================
+$script:ResolvedProxy = $null
+$script:WebProxyArgs = @{}
+
+# Common local HTTP-proxy ports exposed by popular VPN/proxy clients in proxy
+# mode (v2rayN/Nekoray 10808/10809, sing-box 2080/2081, generic SOCKS/HTTP 1080,
+# Happ 10800, Clash 7890, generic 8080, v2rayN http 1087).
+$script:ProxyProbePorts = @(10808, 10809, 2080, 2081, 1080, 10800, 7890, 8080, 1087)
+
+# Does this URL look like an http(s):// proxy PS web cmdlets can actually use?
+function Test-UsableProxyUrl {
+    param([string]$Url)
+    if ([string]::IsNullOrWhiteSpace($Url)) { return $false }
+    return ($Url -match '^(?i)https?://')
+}
+
+# Probe ONE local port: make a real short HTTP request through it. 200 => usable.
+function Test-LocalHttpProxy {
+    param([Parameter(Mandatory)][int]$Port)
+    $p = "http://127.0.0.1:$Port"
+    try {
+        $r = Invoke-WebRequest -Proxy $p -Uri 'http://cloudflare.com/cdn-cgi/trace' `
+            -UseBasicParsing -TimeoutSec 4 -ErrorAction Stop
+        return ($r.StatusCode -eq 200)
+    }
+    catch { return $false }
+}
+
+# Resolve the proxy ONCE and populate $script:ResolvedProxy + $script:WebProxyArgs.
+# Safe to call after i18n is ready (uses T()). Idempotent enough for a single call.
+function Resolve-WebProxy {
+    # (a) explicit -Proxy param wins.
+    if ($PSBoundParameters.ContainsKey('Proxy') -and -not [string]::IsNullOrWhiteSpace($Proxy)) {
+        if (Test-UsableProxyUrl $Proxy) {
+            $script:ResolvedProxy = $Proxy.Trim()
+            $script:WebProxyArgs = @{ Proxy = $script:ResolvedProxy }
+            Write-Ok ((T 'proxy_using') -f $script:ResolvedProxy)
+            return
+        }
+        else {
+            Write-Warn2 ((T 'proxy_socks_skip') -f $Proxy)
+        }
+    }
+
+    # (b) environment variables (HTTPS first, then HTTP, then ALL).
+    foreach ($envName in @('HTTPS_PROXY', 'HTTP_PROXY', 'ALL_PROXY')) {
+        $val = [Environment]::GetEnvironmentVariable($envName)
+        if ([string]::IsNullOrWhiteSpace($val)) {
+            # env vars are case-sensitive on some hosts; also try lower-case.
+            $val = [Environment]::GetEnvironmentVariable($envName.ToLower())
+        }
+        if (-not [string]::IsNullOrWhiteSpace($val)) {
+            if (Test-UsableProxyUrl $val) {
+                $script:ResolvedProxy = $val.Trim()
+                $script:WebProxyArgs = @{ Proxy = $script:ResolvedProxy }
+                Write-Ok ((T 'proxy_using') -f $script:ResolvedProxy)
+                return
+            }
+            else {
+                # Likely a socks5://... URL - PS web cmdlets cannot use it.
+                Write-Warn2 ((T 'proxy_socks_skip') -f $val)
+            }
+        }
+    }
+
+    # (c) auto-detect a local HTTP proxy on the common ports.
+    Write-Host (T 'proxy_probing') -ForegroundColor DarkGray
+    foreach ($port in $script:ProxyProbePorts) {
+        if (Test-LocalHttpProxy -Port $port) {
+            $script:ResolvedProxy = "http://127.0.0.1:$port"
+            $script:WebProxyArgs = @{ Proxy = $script:ResolvedProxy }
+            Write-Ok ((T 'proxy_using') -f $script:ResolvedProxy)
+            return
+        }
+    }
+
+    # (d) none -> direct (PS still consults the system WinINET proxy on its own).
+    Write-Host (T 'proxy_none') -ForegroundColor DarkGray
+}
+
+# Replace a raw download/manifest WebException with a clear, actionable message
+# (EN+RU) when NO proxy was resolved and the official host is unreachable. The
+# caller passes the underlying error record / message so we can still surface it.
+function Get-DownloadFailHint {
+    param([string]$Detail)
+    if ($script:ResolvedProxy) {
+        # A proxy WAS used - keep the underlying detail, it is the real failure.
+        return $Detail
+    }
+    $hint = T 'proxy_unreachable'
+    if (-not [string]::IsNullOrWhiteSpace($Detail)) {
+        return ("{0}`n  ({1})" -f $hint, $Detail)
+    }
+    return $hint
+}
 
 # Resolve a sibling module's path if it exists, else $null.
 # (Modules are robust standalone and define their own T() fallback, so a missing
@@ -130,6 +253,12 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
         en = @{
             welcome              = 'Claude on a Stick - build a portable, no-install Claude Code USB.'
             welcome_sub          = 'Repo ships logic only; binaries + your token are fetched/entered now and land on the stick.'
+            # ---- proxy resolution (restricted regions / local VPN HTTP proxy) ----
+            proxy_using          = 'Using proxy {0} for downloads.'
+            proxy_socks_skip     = 'Ignoring proxy {0}: PowerShell web cmdlets support only http(s):// proxies, not socks5://.'
+            proxy_probing        = 'No proxy set - probing for a local HTTP proxy (your VPN in proxy mode)...'
+            proxy_none           = 'No proxy resolved - downloading directly (the system proxy, if any, still applies).'
+            proxy_unreachable    = "Cannot reach downloads.claude.ai. Enable your VPN, OR set `$env:HTTPS_PROXY=http://127.0.0.1:<port> (your VPN's local HTTP proxy), OR set the Windows system proxy, then retry."
             # ---- MULTI-OS STICK target selection (one stick, any OS) ----
             step_target          = 'Choosing target platform(s)'
             target_one_stick     = 'MULTI-OS: one stick can launch Claude on Windows, Linux AND macOS from the same encrypted token.'
@@ -275,6 +404,12 @@ if (-not (Get-Command -Name 'T' -ErrorAction SilentlyContinue) -or
         ru = @{
             welcome              = 'Claude on a Stick - сборка портативной USB-флешки с Claude Code без установки.'
             welcome_sub          = 'В репозитории только логика; бинарники и ваш токен скачиваются/вводятся сейчас и ложатся на флешку.'
+            # ---- разрешение прокси (ограниченные регионы / локальный HTTP-прокси VPN) ----
+            proxy_using          = 'Используется прокси {0} для загрузок.'
+            proxy_socks_skip     = 'Прокси {0} проигнорирован: веб-командлеты PowerShell поддерживают только http(s)://, а не socks5://.'
+            proxy_probing        = 'Прокси не задан - ищу локальный HTTP-прокси (ваш VPN в режиме прокси)...'
+            proxy_none           = 'Прокси не найден - качаю напрямую (системный прокси, если есть, всё равно применяется).'
+            proxy_unreachable    = "Не удаётся подключиться к downloads.claude.ai. Включите VPN, ЛИБО задайте `$env:HTTPS_PROXY=http://127.0.0.1:<порт> (локальный HTTP-прокси вашего VPN), ЛИБО задайте системный прокси Windows, затем повторите."
             # ---- MULTI-OS: выбор целевых платформ (одна флешка - любая ОС) ----
             step_target          = 'Выбор целевой платформы (платформ)'
             target_one_stick     = 'MULTI-OS: одна флешка запускает Claude на Windows, Linux И macOS из одного зашифрованного токена.'
@@ -478,6 +613,11 @@ Write-Host ''
 Write-Host (T 'welcome') -ForegroundColor White
 Write-Host (T 'welcome_sub') -ForegroundColor DarkGray
 
+# Resolve the build-time web proxy ONCE, now that T() is ready. Populates
+# $script:WebProxyArgs (splatted into every web cmdlet) + $script:ResolvedProxy.
+# Done before the shared modules load so happ.ps1 can read $script:ResolvedProxy.
+Resolve-WebProxy
+
 # Bring in the rest of the shared toolkit (they also define local T() fallbacks,
 # but ours is already in scope, so they reuse it).
 $usbPath = Resolve-Shared 'usb.ps1'
@@ -663,7 +803,36 @@ foreach ($sub in @('bin', 'config', 'projects', 'tmp', 'apps')) {
 Write-Step ((T 'step_download_multi') -f $Targets.Count)
 Write-Host ((T 'dl_plat') -f ($Targets -join ', '), $Channel) -ForegroundColor DarkGray
 
-function Get-Text { param([string]$Url) return (Invoke-RestMethod -Uri $Url -TimeoutSec 30) }
+# True if an error record is a network-reachability failure. PS 5.1 (the primary
+# target, legacy WebRequest stack) raises System.Net.WebException; PS 7 (HttpClient
+# stack) raises System.Net.Http.HttpRequestException. Catch BOTH so the clear hint
+# fires on either edition (host-unreachable / DNS / connection refused).
+function Test-IsNetworkError {
+    param($ErrorRecord)
+    $ex = $ErrorRecord.Exception
+    while ($ex) {
+        $tn = $ex.GetType().FullName
+        if ($tn -eq 'System.Net.WebException' -or $tn -eq 'System.Net.Http.HttpRequestException') {
+            return $true
+        }
+        $ex = $ex.InnerException
+    }
+    return $false
+}
+
+# Web GET-to-text through the resolved proxy (splat is empty => direct/system proxy).
+# On a network failure with NO proxy resolved, Die with the clear EN+RU hint instead
+# of the raw "could not resolve host" error.
+function Get-Text {
+    param([string]$Url)
+    try {
+        return (Invoke-RestMethod -Uri $Url -TimeoutSec 30 @script:WebProxyArgs)
+    }
+    catch {
+        if (Test-IsNetworkError $_) { Die (Get-DownloadFailHint $_.Exception.Message) }
+        throw
+    }
+}
 
 # 3a. resolve bare semver from /<channel>  (ONCE).
 $ver = "$([string](Get-Text "$ManifestHost/$Channel"))".Trim()
@@ -684,8 +853,8 @@ if ($gpg) {
     try {
         $tmpMan = Join-Path $env:TEMP "cos-manifest-$ver.json"
         $tmpSig = "$tmpMan.sig"
-        Invoke-WebRequest -Uri "$ManifestHost/$ver/manifest.json" -OutFile $tmpMan -UseBasicParsing -TimeoutSec 30
-        Invoke-WebRequest -Uri "$ManifestHost/$ver/manifest.json.sig" -OutFile $tmpSig -UseBasicParsing -TimeoutSec 30
+        Invoke-WebRequest -Uri "$ManifestHost/$ver/manifest.json" -OutFile $tmpMan -UseBasicParsing -TimeoutSec 30 @script:WebProxyArgs
+        Invoke-WebRequest -Uri "$ManifestHost/$ver/manifest.json.sig" -OutFile $tmpSig -UseBasicParsing -TimeoutSec 30 @script:WebProxyArgs
         & $gpg.Source --verify $tmpSig $tmpMan 2>$null
         if ($LASTEXITCODE -eq 0) { Write-Ok (T 'dl_gpg_ok') } else { Write-Warn2 (T 'dl_gpg_fail') }
         Remove-Item -Force -ErrorAction SilentlyContinue $tmpMan, $tmpSig
@@ -718,7 +887,13 @@ foreach ($plat in $Targets) {
 
     $binUrl = "$ManifestHost/$ver/$plat/$binName"
     Write-Host ((T 'dl_fetching') -f $binUrl) -ForegroundColor DarkGray
-    Invoke-WebRequest -Uri $binUrl -OutFile $binDst -UseBasicParsing -TimeoutSec 600
+    try {
+        Invoke-WebRequest -Uri $binUrl -OutFile $binDst -UseBasicParsing -TimeoutSec 600 @script:WebProxyArgs
+    }
+    catch {
+        if (Test-IsNetworkError $_) { Die (Get-DownloadFailHint $_.Exception.Message) }
+        throw
+    }
 
     $gotSize = (Get-Item -LiteralPath $binDst).Length
     if ($wantSize -and ($gotSize -ne $wantSize)) {

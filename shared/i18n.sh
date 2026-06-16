@@ -448,6 +448,11 @@ MSG[en.summary_run_win]="On Windows: open the stick and double-click START.bat"
 # errors (flat)
 MSG[en.err_no_sha256]="No SHA-256 tool found (need sha256sum or shasum). Install one and re-run."
 MSG[en.err_no_http]="No HTTP downloader found (need curl or wget). Install one and re-run."
+# proxy (restricted regions / local VPN HTTP proxy)
+MSG[en.proxy_using]="Using proxy {0} for downloads."
+MSG[en.proxy_probing]="No proxy set - probing for a local HTTP proxy (your VPN in proxy mode)..."
+MSG[en.proxy_none]="No proxy resolved - downloading directly."
+MSG[en.proxy_unreachable]="Cannot reach downloads.claude.ai. Enable your VPN, OR export HTTPS_PROXY=http://127.0.0.1:<port> (your VPN's local HTTP proxy), OR set the system proxy, then retry."
 MSG[en.err_no_usb_helper]="shared/usb.sh is missing or did not load - cannot select/format the USB."
 MSG[en.err_usb_failed]="USB selection/format failed."
 MSG[en.err_usb_none]="No USB device was selected."
@@ -583,6 +588,11 @@ MSG[ru.summary_run_win]="На Windows: откройте флешку и дваж
 # errors (flat)
 MSG[ru.err_no_sha256]="Не найден инструмент SHA-256 (нужен sha256sum или shasum). Установите и запустите снова."
 MSG[ru.err_no_http]="Не найден HTTP-загрузчик (нужен curl или wget). Установите и запустите снова."
+# прокси (ограниченные регионы / локальный HTTP-прокси VPN)
+MSG[ru.proxy_using]="Используется прокси {0} для загрузок."
+MSG[ru.proxy_probing]="Прокси не задан - ищу локальный HTTP-прокси (ваш VPN в режиме прокси)..."
+MSG[ru.proxy_none]="Прокси не найден - качаю напрямую."
+MSG[ru.proxy_unreachable]="Не удаётся подключиться к downloads.claude.ai. Включите VPN, ЛИБО задайте export HTTPS_PROXY=http://127.0.0.1:<порт> (локальный HTTP-прокси вашего VPN), ЛИБО задайте системный прокси, затем повторите."
 MSG[ru.err_no_usb_helper]="shared/usb.sh отсутствует или не загрузился - выбор/форматирование USB невозможно."
 MSG[ru.err_usb_failed]="Выбор/форматирование USB не удались."
 MSG[ru.err_usb_none]="USB-устройство не выбрано."
@@ -724,6 +734,10 @@ if [ "$I18N_HAVE_ASSOC" != "1" ]; then
       app.banner)      tmpl="claude-on-a-stick - portable Claude Code builder";;
       common.aborted)  tmpl="Aborted. Nothing was changed.";;
       err.macos_experimental) tmpl="NOTE: macOS is EXPERIMENTAL/best-effort. Install bash 4+ (brew install bash) for full RU/EN messages.";;
+      proxy_using)     tmpl="Using proxy {0} for downloads.";;
+      proxy_probing)   tmpl="No proxy set - probing for a local HTTP proxy (your VPN in proxy mode)...";;
+      proxy_none)      tmpl="No proxy resolved - downloading directly.";;
+      proxy_unreachable) tmpl="Cannot reach downloads.claude.ai. Enable your VPN, OR export HTTPS_PROXY=http://127.0.0.1:<port> (your VPN's local HTTP proxy), OR set the system proxy, then retry.";;
       *)               tmpl="<<$key>>";;
     esac
     _i18n_subst "$tmpl" "$@"
